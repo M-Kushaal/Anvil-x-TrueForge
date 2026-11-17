@@ -1,0 +1,413 @@
+{
+  "name": "anvil",
+  "displayName": "Anvil",
+  "description": "A coding agent for VS Code that runs on TrueForge. It shows which code it read and why, and changes nothing until you keep each change.",
+  "version": "0.1.0",
+  "publisher": "anvil-forgeathon",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.100.0",
+    "node": ">=22.18"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "anvil",
+          "title": "Anvil",
+          "icon": "media/anvil.svg"
+        }
+      ]
+    },
+    "views": {
+      "anvil": [
+        {
+          "type": "webview",
+          "id": "anvil.chat",
+          "name": "Chat"
+        },
+        {
+          "id": "anvil.changes",
+          "name": "Changes",
+          "icon": "$(diff)",
+          "contextualTitle": "Anvil"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "anvil.newChat",
+        "title": "New Chat",
+        "category": "Anvil",
+        "icon": "$(add)"
+      },
+      {
+        "command": "anvil.stop",
+        "title": "Stop",
+        "category": "Anvil",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "anvil.focus",
+        "title": "Focus Chat",
+        "category": "Anvil"
+      },
+      {
+        "command": "anvil.review",
+        "title": "Review Pending Changes",
+        "category": "Anvil",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "anvil.keepAll",
+        "title": "Keep All Changes",
+        "category": "Anvil",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "anvil.discardAll",
+        "title": "Reject All Changes",
+        "category": "Anvil",
+        "icon": "$(close-all)"
+      },
+      {
+        "command": "anvil.keepFile",
+        "title": "Keep All in File",
+        "category": "Anvil",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "anvil.undoFile",
+        "title": "Reject All in File",
+        "category": "Anvil",
+        "icon": "$(close)"
+      },
+      {
+        "command": "anvil.keepHunk",
+        "title": "Keep Change",
+        "category": "Anvil",
+        "icon": "$(check)"
+      },
+      {
+        "command": "anvil.undoHunk",
+        "title": "Reject Change",
+        "category": "Anvil",
+        "icon": "$(close)"
+      },
+      {
+        "command": "anvil.keepAtCursor",
+        "title": "Keep Change at Cursor",
+        "category": "Anvil"
+      },
+      {
+        "command": "anvil.undoAtCursor",
+        "title": "Reject Change at Cursor",
+        "category": "Anvil"
+      },
+      {
+        "command": "anvil.nextHunk",
+        "title": "Next Change",
+        "category": "Anvil",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "anvil.prevHunk",
+        "title": "Previous Change",
+        "category": "Anvil",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "anvil.undoLastApply",
+        "title": "Revert Last Kept Change",
+        "category": "Anvil",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "anvil.inlineEdit",
+        "title": "Edit Selection",
+        "category": "Anvil",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "anvil.cancelInline",
+        "title": "Cancel Inline Edit",
+        "category": "Anvil"
+      },
+      {
+        "command": "anvil.inlineHistory",
+        "title": "Inline Edit History",
+        "category": "Anvil"
+      },
+      {
+        "command": "anvil.history",
+        "title": "History",
+        "category": "Anvil",
+        "icon": "$(history)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "anvil.focus",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+l"
+      },
+      {
+        "command": "anvil.stop",
+        "key": "ctrl+shift+backspace",
+        "mac": "cmd+shift+backspace"
+      },
+      {
+        "command": "anvil.keepAtCursor",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "editorTextFocus && resourceScheme == anvil-proposal"
+      },
+      {
+        "command": "anvil.undoAtCursor",
+        "key": "ctrl+backspace",
+        "mac": "cmd+backspace",
+        "when": "editorTextFocus && resourceScheme == anvil-proposal"
+      },
+      {
+        "command": "anvil.keepFile",
+        "key": "ctrl+shift+enter",
+        "mac": "cmd+shift+enter",
+        "when": "resourceScheme == anvil-proposal"
+      },
+      {
+        "command": "anvil.nextHunk",
+        "key": "alt+]",
+        "when": "resourceScheme == anvil-proposal"
+      },
+      {
+        "command": "anvil.prevHunk",
+        "key": "alt+[",
+        "when": "resourceScheme == anvil-proposal"
+      },
+      {
+        "command": "anvil.inlineEdit",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "editorTextFocus && !editorReadonly && resourceScheme != anvil-proposal"
+      },
+      {
+        "command": "anvil.cancelInline",
+        "key": "escape",
+        "when": "anvil.inlineRunning && editorTextFocus"
+      },
+      {
+        "command": "anvil.cancelInline",
+        "key": "ctrl+shift+backspace",
+        "mac": "cmd+shift+backspace",
+        "when": "anvil.inlineRunning"
+      }
+    ],
+    "configuration": {
+      "title": "Anvil",
+      "properties": {
+        "anvil.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:8790",
+          "description": "Base URL of the local TrueForge server."
+        },
+        "anvil.models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "groq/gpt-oss-120b",
+            "groq-2/gpt-oss-120b",
+            "groq/gpt-oss-20b",
+            "groq-2/gpt-oss-20b",
+            "ollama/qwen2-5-3b"
+          ],
+          "description": "Models to use, as named in TrueForge (provider/model). The first is used normally; the others take over automatically if it fails."
+        },
+        "anvil.leanProviders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "groq"
+          ],
+          "description": "Providers whose requests must stay small (for example Groq's free tier, 8k tokens per request). Their models get shorter context (at most 1,800 tokens), earlier history compaction (6,000 tokens), no subagents and shorter answers. 'groq' also covers groq-2, groq-backup and so on."
+        },
+        "anvil.contextBudget": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 500,
+          "maximum": 8000,
+          "description": "How many tokens of code Anvil sends with each request, before the model reads more on its own."
+        },
+        "anvil.graphifyCommand": {
+          "type": "string",
+          "default": "graphify",
+          "description": "Graphify executable used to build the code graph offline (pip install graphifyy). Leave as is if it is on PATH."
+        },
+        "anvil.commandPath": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Folders prepended to PATH for commands the agent runs (relative to the workspace), e.g. a virtualenv Scripts or bin folder."
+        },
+        "anvil.compactAt": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 3000,
+          "description": "TrueForge summarises older conversation history once a request reaches this many input tokens. Providers listed in anvil.leanProviders use 6,000 at most."
+        },
+        "anvil.allowModelFallback": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow automatic switches through the configured model chain. Disable to use only the primary model."
+        }
+      }
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "anvil.prevHunk",
+          "when": "resourceScheme == anvil-proposal",
+          "group": "navigation@1"
+        },
+        {
+          "command": "anvil.nextHunk",
+          "when": "resourceScheme == anvil-proposal",
+          "group": "navigation@2"
+        },
+        {
+          "command": "anvil.keepFile",
+          "when": "resourceScheme == anvil-proposal",
+          "group": "navigation@3"
+        },
+        {
+          "command": "anvil.undoFile",
+          "when": "resourceScheme == anvil-proposal",
+          "group": "navigation@4"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "anvil.keepAll",
+          "when": "view == anvil.changes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "anvil.discardAll",
+          "when": "view == anvil.changes",
+          "group": "navigation@2"
+        },
+        {
+          "command": "anvil.undoLastApply",
+          "when": "view == anvil.changes",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "anvil.keepHunk",
+          "when": "view == anvil.changes && viewItem == anvilHunk",
+          "group": "inline@1"
+        },
+        {
+          "command": "anvil.undoHunk",
+          "when": "view == anvil.changes && viewItem == anvilHunk",
+          "group": "inline@2"
+        },
+        {
+          "command": "anvil.keepFile",
+          "when": "view == anvil.changes && viewItem == anvilFile",
+          "group": "inline@1"
+        },
+        {
+          "command": "anvil.undoFile",
+          "when": "view == anvil.changes && viewItem == anvilFile",
+          "group": "inline@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "anvil.keepHunk",
+          "when": "false"
+        },
+        {
+          "command": "anvil.undoHunk",
+          "when": "false"
+        }
+      ]
+    },
+    "colors": [
+      {
+        "id": "anvil.accent",
+        "description": "Anvil brand accent: working state, active run.",
+        "defaults": {
+          "dark": "#E8590C",
+          "light": "#C2410C",
+          "highContrast": "focusBorder",
+          "highContrastLight": "focusBorder"
+        }
+      },
+      {
+        "id": "anvil.workingBackground",
+        "description": "Background of lines Anvil is editing.",
+        "defaults": {
+          "dark": "#E8590C14",
+          "light": "#C2410C10",
+          "highContrast": "#00000000",
+          "highContrastLight": "#00000000"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "package": "node esbuild.mjs --production",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p webview",
+    "test": "vitest run --configLoader runner",
+    "test:watch": "vitest",
+    "test:live": "vitest run -c vitest.live.config.ts",
+    "check": "npm run typecheck && npm test",
+    "forge": "node scripts/forge.mjs",
+    "build:e2e": "esbuild test/e2e/index.ts --bundle --platform=node --format=cjs --target=node22 --external:vscode --external:mocha --outfile=dist-test/index.js --log-level=warning",
+    "test:e2e": "npm run build && npm run build:e2e && node test/e2e/runTest.mts",
+    "eval": "vitest run --configLoader runner -c vitest.eval.config.ts",
+    "setup": "node scripts/setup.mjs",
+    "preview": "node scripts/preview.mjs"
+  },
+  "devDependencies": {
+    "@testing-library/preact": "^3.2.6",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.10.0",
+    "@types/vscode": "~1.100.0",
+    "@vscode/test-electron": "^3.1.0",
+    "esbuild": "^0.25.0",
+    "happy-dom": "^21.0.4",
+    "mocha": "^12.0.3",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@truefoundry/trueforge-sdk": "^0.185.0",
+    "@vscode/codicons": "^0.0.46-24",
+    "diff": "^9.0.0",
+    "dompurify": "^3.4.17",
+    "marked": "^18.2.0",
+    "preact": "^10.29.8",
+    "zod": "^4.6.7"
+  }
+}

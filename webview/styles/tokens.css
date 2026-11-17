@@ -1,0 +1,49 @@
+/* Design tokens. Components use only --a-* tokens; every value maps to the VS Code
+   theme so Anvil looks native in light, dark and high-contrast themes. */
+:root {
+  --a-bg: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  --a-surface: var(--vscode-editorWidget-background);
+  --a-surface-2: var(--vscode-input-background);
+  --a-border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.25)));
+  --a-text: var(--vscode-foreground);
+  --a-muted: var(--vscode-descriptionForeground);
+  --a-link: var(--vscode-textLink-foreground);
+  --a-focus: var(--vscode-focusBorder);
+  --a-primary-bg: var(--vscode-button-background);
+  --a-primary-fg: var(--vscode-button-foreground);
+  --a-primary-hover: var(--vscode-button-hoverBackground);
+  --a-secondary-bg: var(--vscode-button-secondaryBackground);
+  --a-secondary-fg: var(--vscode-button-secondaryForeground);
+  --a-secondary-hover: var(--vscode-button-secondaryHoverBackground);
+  --a-hover: var(--vscode-list-hoverBackground);
+  --a-add: var(--vscode-gitDecoration-addedResourceForeground);
+  --a-del: var(--vscode-gitDecoration-deletedResourceForeground);
+  --a-warn: var(--vscode-editorWarning-foreground);
+  --a-error: var(--vscode-errorForeground);
+  --a-info: var(--vscode-charts-blue);
+  --a-badge-bg: var(--vscode-badge-background);
+  --a-badge-fg: var(--vscode-badge-foreground);
+  --a-code-bg: var(--vscode-textCodeBlock-background);
+  --a-accent: #e8590c;
+
+  --a-font: var(--vscode-font-family);
+  --a-mono: var(--vscode-editor-font-family);
+  --a-size-body: 13px;
+  --a-size-meta: 12px;
+  --a-size-micro: 11px;
+
+  --a-s1: 4px;
+  --a-s2: 8px;
+  --a-s3: 12px;
+  --a-s4: 16px;
+  --a-s5: 24px;
+
+  --a-r-control: 4px;
+  --a-r-card: 6px;
+  --a-r-input: 8px;
+
+  --a-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+body.vscode-light { --a-accent: #c2410c; }
+body.vscode-high-contrast, body.vscode-high-contrast-light { --a-accent: var(--vscode-focusBorder); }
