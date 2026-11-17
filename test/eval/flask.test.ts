@@ -7,9 +7,10 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { ContextEngine } from '../../src/context/engine';
 import { buildGraph } from '../../src/context/graphify';
 import { createWorkspace } from '../../src/workspace/workspace';
+import { flaskRoot, projectRoot } from '../support/paths';
 
-const FLASK = path.resolve(__dirname, '../../../flask');
-const GRAPHIFY = process.env.GRAPHIFY_BIN ?? path.resolve(__dirname, '../../../.tools-venv/Scripts/graphify.exe');
+const FLASK = flaskRoot;
+const GRAPHIFY = process.env.GRAPHIFY_BIN ?? 'graphify';
 
 const TASK_B = 'Add a new built-in CLI command flask config that prints the loaded application\'s configuration as JSON, masking the values of any key containing SECRET, PASSWORD, TOKEN or KEY as "***". It must appear in flask --help, be covered by a test, and be documented alongside the other built-in commands.';
 
@@ -29,7 +30,7 @@ const engine = new ContextEngine(createWorkspace({ root: FLASK }));
 
 describe.skipIf(!present)('retrieval on Flask 3.1.3', () => {
   beforeAll(async () => {
-    const { graph, message } = await buildGraph({ root: FLASK, outDir: path.resolve(__dirname, '../../.cache/flask-graph'), command: GRAPHIFY });
+    const { graph, message } = await buildGraph({ root: FLASK, outDir: path.join(projectRoot, '.cache/flask-graph'), command: GRAPHIFY });
     if (graph) engine.setGraph(graph);
     console.log(message, `graph links: ${graph?.links.size ?? 0}`);
   }, 300_000);

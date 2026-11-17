@@ -2,7 +2,7 @@
 // extension never does. The API key comes from TrueForge's request and is passed through untouched.
 // Run: node scripts/model-relay.ts   (env: UPSTREAM, RELAY_PORT; RELAY_LOG=1 prints request sizes)
 import http from 'node:http';
-import { requestSizes, stripReplayedReasoning, upstreamUrl } from '../src/models/relay.ts';
+import { requestSizes, stripReplayedReasoning, upstreamUrl } from './lib/model-relay.ts';
 
 const UPSTREAM = process.env.UPSTREAM ?? 'https://api.groq.com/openai/v1';
 const PORT = Number(process.env.RELAY_PORT ?? 8791);

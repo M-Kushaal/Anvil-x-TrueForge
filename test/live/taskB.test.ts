@@ -22,11 +22,11 @@ import { limitsFor, specFor } from '../../src/models/limits';
 import type { ChatState } from '../../src/shared/protocol';
 import { createWorkspace } from '../../src/workspace/workspace';
 import { FLASK, SERVER } from './harness';
+import { projectRoot, pythonCommand } from '../support/paths';
 
 const TASK_B = 'Add a new built-in CLI command flask config that prints the loaded application\'s configuration as JSON, masking the values of any key containing SECRET, PASSWORD, TOKEN or KEY as "***". It must appear in flask --help, be covered by a test, and be documented alongside the other built-in commands.';
 const MODELS = (process.env.ANVIL_MODELS ?? 'groq/gpt-oss-120b,groq-2/gpt-oss-120b,groq/gpt-oss-20b,groq-2/gpt-oss-20b').split(',');
 const SETTINGS = { leanProviders: ['groq'], compactAt: Number(process.env.ANVIL_COMPACT ?? 60000), contextBudget: Number(process.env.ANVIL_BUDGET ?? 3000) };
-const PYTHON = path.resolve(FLASK, '../.flask-venv/Scripts/python.exe');
 
 const drafts = new DraftStore();
 let host: McpHost;
@@ -36,13 +36,13 @@ let state: ChatState | undefined;
 beforeAll(async () => {
   const ws = createWorkspace({ root: FLASK, liveText: (abs) => drafts.view(path.relative(FLASK, abs).split(path.sep).join('/')) });
   const engine = new ContextEngine(ws);
-  const graph = loadGraph(path.resolve(__dirname, '../../.cache/flask-graph/graph.json'));
+  const graph = loadGraph(path.join(projectRoot, '.cache/flask-graph/graph.json'));
   if (graph) engine.setGraph(graph);
   const real = (p: string) => { try { return readFileSync(path.join(FLASK, p), 'utf8').replace(/\r\n/g, '\n'); } catch { return undefined; } };
   const edits: EditContext = { drafts, realText: async (p) => real(p), model: () => state?.model ?? MODELS[0]! };
   host = await startMcpServer({ tools: () => [
     ...readTools(ws), ...contextTools(engine), ...editTools(edits),
-    ...commandTools({ ws, drafts, extraPath: () => [path.resolve(FLASK, '../.flask-venv/Scripts')] }),
+    ...commandTools({ ws, drafts, extraPath: () => path.isAbsolute(pythonCommand) ? [path.dirname(pythonCommand)] : [] }),
     planTool((steps) => controller.setPlan(steps)),
   ] });
   const { client, sdk } = ForgeClient.connect(SERVER);
@@ -90,11 +90,11 @@ describe('Task B (live)', () => {
     for (const d of drafts.all()) writeFileSync(path.join(copy, d.path), d.proposed);
     const env = { ...process.env, PYTHONPATH: path.join(copy, 'src') };
     const pytest = (() => {
-      try { return execFileSync(PYTHON, ['-m', 'pytest', 'tests/test_cli.py', '-q', '-p', 'no:cacheprovider'], { cwd: copy, env }).toString(); }
+      try { return execFileSync(pythonCommand, ['-m', 'pytest', 'tests/test_cli.py', '-q', '-p', 'no:cacheprovider'], { cwd: copy, env }).toString(); }
       catch (e) { return String((e as { stdout?: Buffer }).stdout ?? e); }
     })();
     console.log(pytest.split('\n').slice(-8).join('\n'));
-    const help = execFileSync(PYTHON, ['-m', 'flask', '--help'], { cwd: copy, env }).toString();
+    const help = execFileSync(pythonCommand, ['-m', 'flask', '--help'], { cwd: copy, env }).toString();
     console.log(help.split('\n').filter((l) => /config|routes|shell|run/.test(l)).join('\n'));
     expect(help).toMatch(/^\s+config\s/m);
     expect(pytest).toMatch(/\d+ passed/);

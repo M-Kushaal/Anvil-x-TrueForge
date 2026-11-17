@@ -10,8 +10,8 @@ import { editTools, type EditContext } from '../../src/mcp/editTools';
 import { readTools } from '../../src/mcp/readTools';
 import { startInlineEdit } from '../../src/inline/run';
 import { FLASK, MODEL, startLive, type Live } from './harness';
+import { pythonCommand } from '../support/paths';
 
-const PYTHON = path.resolve(FLASK, '../.flask-venv/Scripts/python.exe');
 const INSTRUCTION = "Treat the values 'off' and 'n' as false as well, case-insensitively, and update the docstring to list every value that is treated as false.";
 
 let live: Live;
@@ -44,7 +44,7 @@ describe('Task A (live)', () => {
     const copy = mkdtempSync(path.join(tmpdir(), 'anvil-taskA-'));
     cpSync(path.join(FLASK, 'src'), path.join(copy, 'src'), { recursive: true });
     writeFileSync(path.join(copy, 'src/flask/helpers.py'), proposed);
-    const check = (value: string) => execFileSync(PYTHON, ['-c', 'from flask.helpers import get_debug_flag; print(get_debug_flag())'], {
+    const check = (value: string) => execFileSync(pythonCommand, ['-c', 'from flask.helpers import get_debug_flag; print(get_debug_flag())'], {
       env: { ...process.env, PYTHONPATH: path.join(copy, 'src'), FLASK_DEBUG: value },
     }).toString().trim();
     expect(check('off')).toBe('False');

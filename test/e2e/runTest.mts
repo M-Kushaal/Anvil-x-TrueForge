@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runTests } from '@vscode/test-electron';
 
+const vscodeExecutablePath = process.env.VSCODE_EXECUTABLE_PATH;
+
 // Running from inside VS Code (its terminal or an extension) leaks variables that make Electron act as
 // Node or attach to the running VS Code, so the suite silently never runs. Start from a clean slate.
 for (const key of Object.keys(process.env)) if (/^(VSCODE_|ELECTRON_)/.test(key)) delete process.env[key];
@@ -16,6 +18,7 @@ cpSync(path.join(root, 'test/fixtures/mini-repo'), workspace, { recursive: true 
 writeFileSync(path.join(workspace, 'crlf.py'), 'a = 1\r\nb = 2\r\nc = 3\r\n');
 
 await runTests({
+  vscodeExecutablePath,
   extensionDevelopmentPath: root,
   extensionTestsPath: path.join(root, 'dist-test/index.js'),
   launchArgs: [workspace, '--disable-extensions', '--skip-welcome', '--skip-release-notes'],

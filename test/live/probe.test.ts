@@ -1,5 +1,5 @@
 // Which models answer right now: one tiny turn each.
-// ANVIL_MODELS=a,b npx vitest run -c vitest.live.config.ts test/live/probe.test.ts
+// ANVIL_MODELS=a,b npm run test:live -- test/live/probe.test.ts
 import { it } from 'vitest';
 import { buildSpec } from '../../src/forge/agentSpec';
 import { ForgeClient } from '../../src/forge/client';

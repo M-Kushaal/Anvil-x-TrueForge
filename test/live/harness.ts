@@ -1,5 +1,5 @@
 // Shared setup for live tests: real TrueForge, real model, Anvil's MCP server on the Flask checkout.
-import path from 'node:path';
+import { flaskRoot } from '../support/paths';
 import { ForgeClient, type ApprovalRequest, type Decision } from '../../src/forge/client';
 import { registerConnector } from '../../src/forge/connector';
 import { startMcpServer, type McpHost } from '../../src/mcp/server';
@@ -11,7 +11,7 @@ import type { Tool } from '../../src/mcp/tool';
 
 export const SERVER = process.env.TRUEFORGE_URL ?? 'http://localhost:8790';
 export const MODEL = process.env.ANVIL_MODEL ?? 'groq/gpt-oss-120b';
-export const FLASK = path.resolve(__dirname, process.env.FLASK_DIR ?? '../../../flask');
+export const FLASK = flaskRoot;
 
 export interface Live {
   workspace: Workspace;

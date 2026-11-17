@@ -26,7 +26,7 @@ Requirements: Node ≥ 22.18, VS Code ≥ 1.100, Git. Optional: Python with `pip
 ```bash
 git clone https://github.com/M-Kushaal/Anvil-x-TrueForge.git anvil && cd anvil
 git clone --depth 1 --branch 3.1.3 https://github.com/pallets/flask ../flask   # the target repo (Tasks A-C)
-npm install
+npm ci
 cp .env.example .env          # GROQ_API_KEY (optionally GROQ_SECOND_KEY from another account); never committed
 
 npm run forge                  # terminal 1: TrueForge on :8790 + model relays on :8791 (Groq) and :8792 (Cerebras)
@@ -55,7 +55,7 @@ loopback is allowed; the guard stays on for every other private address.
 
 To switch models, add a provider in TrueForge (Settings → Models) and list it in `anvil.models`; Anvil
 sets the session's model from that list, so the model named in `agents/anvil.json` is only a default for the
-saved agent. [`settings.example.json`](settings.example.json) is an example configuration.
+saved agent. [`docs/examples/settings.json`](docs/examples/settings.json) is an example configuration.
 
 ## How it works
 
@@ -112,10 +112,17 @@ outlines and line-numbered snippets; the agent reads more on demand. Per request
 Measured on Flask 3.1.3 over 8 tasks with known target files (`npm run eval`):
 **recall@1 18/18** (implementation 8/8, test 6/6, docs 4/4). Without the code graph: 17/18 at @1, 18/18 at @3.
 
+## Development
+
+See [the development guide](docs/development.md) for the folder layout, test suites,
+and optional Flask, Graphify, and VS Code test setup.
+
 ## Tests
 
 ```bash
 npm run check        # typecheck + unit, contract and webview regression tests
+npm run build        # development extension and webview bundles
+npm run package      # production bundles
 npm run test:e2e     # 6 end-to-end tests in a real VS Code (review, keep, undo, CRLF, new files)
 npm run eval         # retrieval recall on ../flask
 npm run test:live    # against a running TrueForge and real models (Task A, B, C)

@@ -5,7 +5,7 @@
       "label": "build",
       "type": "process",
       "command": "node",
-      "args": ["esbuild.mjs"],
+      "args": ["${workspaceFolder}/scripts/build.mjs"],
       "group": { "kind": "build", "isDefault": true },
       "problemMatcher": [],
       "presentation": { "reveal": "silent" }
