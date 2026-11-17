@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Anvil: see the context, review the change.</title>
+  <desc id="desc">Anvil is a coding agent for VS Code, built on TrueForge. A diagram shows context flowing into a proposed edit and a user-approved change.</desc>
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" stroke="#F5EBDD" stroke-opacity=".045"/>
+    </pattern>
+    <linearGradient id="surface" x1="0" y1="0" x2="1200" y2="440" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#20211F"/>
+      <stop offset="1" stop-color="#131613"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="440" rx="20" fill="url(#surface)"/>
+  <rect width="1200" height="440" rx="20" fill="url(#grid)"/>
+  <rect x=".5" y=".5" width="1199" height="439" rx="19.5" stroke="#F5EBDD" stroke-opacity=".12"/>
+  <path d="M52 52H80M52 52V80M1148 360V388H1120" stroke="#EE7A42" stroke-width="2"/>
+  <g transform="translate(76 72)">
+    <rect width="48" height="48" rx="12" fill="#EE7135"/>
+    <g transform="translate(9 8) scale(1.25)" fill="#191C19">
+      <path d="M2 6h14.5c1.6 0 3-.9 3.7-2.3L21 2v5.2A4.8 4.8 0 0 1 16.2 12H15l1.2 4H18v3H6v-3h1.8L9 12H6.5A4.5 4.5 0 0 1 2 7.5z"/>
+      <rect x="4" y="20" width="16" height="2" rx="1"/>
+    </g>
+  </g>
+  <g font-family="Segoe UI, Helvetica, Arial, sans-serif">
+    <text x="140" y="106" fill="#F5EBDD" font-size="34" font-weight="750" letter-spacing="4">ANVIL</text>
+    <text x="78" y="180" fill="#EAA279" font-size="12" font-weight="600" letter-spacing="3">A CODING AGENT FOR VS CODE</text>
+    <text x="74" y="246" fill="#F5EBDD" font-size="51" font-weight="700" letter-spacing="-2">See the context.</text>
+    <text x="74" y="308" fill="#F5EBDD" font-size="51" font-weight="700" letter-spacing="-2">Review the change.</text>
+    <text x="78" y="354" fill="#AAAFA7" font-size="17">Your workspace. Your models. Your call.</text>
+    <rect x="78" y="378" width="158" height="27" rx="13.5" stroke="#65695E"/>
+    <text x="96" y="396" fill="#CFD2C7" font-size="10" letter-spacing="1.5">BUILT ON TRUEFORGE</text>
+  </g>
+  <path d="M618 117H654V215H692M820 257V295H859" stroke="#EE7135" stroke-opacity=".65" stroke-width="1.5"/>
+  <circle cx="654" cy="117" r="3.5" fill="#EE7135"/>
+  <circle cx="820" cy="295" r="3.5" fill="#EE7135"/>
+  <g font-family="Segoe UI, Helvetica, Arial, sans-serif">
+    <rect x="650" y="60" width="291" height="102" rx="12" fill="#232821" stroke="#495044"/>
+    <circle cx="674" cy="86" r="4" fill="#EEA277"/>
+    <text x="689" y="91" fill="#EBD8C4" font-size="12" font-weight="600">01 / UNDERSTAND</text>
+    <text x="674" y="122" fill="#E3E7DB" font-size="17" font-weight="600">The right files, with reasons.</text>
+    <text x="674" y="143" fill="#9FA895" font-size="12">Implementation · tests · documentation</text>
+    <rect x="692" y="186" width="356" height="101" rx="12" fill="#28251F" stroke="#68533E"/>
+    <circle cx="716" cy="212" r="4" fill="#EEA277"/>
+    <text x="731" y="217" fill="#EBD8C4" font-size="12" font-weight="600">02 / PROPOSE</text>
+    <text x="716" y="247" fill="#F1E3D2" font-size="17" font-weight="600">Every edit waits for your review.</text>
+    <text x="716" y="268" fill="#B7AA96" font-size="12">Read the diff. Keep or reject each change.</text>
+    <rect x="859" y="313" width="274" height="82" rx="12" fill="#202D24" stroke="#55705A"/>
+    <path d="m882 342 5 5 9-11" stroke="#ABD09C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="906" y="347" fill="#C9E2BE" font-size="12" font-weight="600">03 / KEEP</text>
+    <text x="882" y="376" fill="#E1EBD9" font-size="17" font-weight="600">You decide what ships.</text>
+  </g>
+</svg>

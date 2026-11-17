@@ -80,7 +80,7 @@ whose key was rejected). Free tiers and a laptop CPU during development.
 
 ## 7. Tools used
 Claude Code (Claude) for pair-programming, research and code review. Graphify (offline code graph). Vitest,
-@vscode/test-electron. No AI-generated assets.
+@vscode/test-electron. README images: SVG branding and UI previews rendered from application components with example data.
 
 ## 8. Known limitations and next month
 - Free tiers are too small for long agent runs (Groq: 8k tokens per request; Cerebras trial: a few requests
