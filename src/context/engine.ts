@@ -81,12 +81,18 @@ export class ContextEngine {
     return this.texts.size;
   }
 
-  async pack(request: string, { budget, mentions = [], exclude = [] }: { budget: number; mentions?: Mention[]; exclude?: string[] }): Promise<ContextPack> {
+  async pack(request: string, { budget, mentions = [], exclude = [], resolveExplicitMentions = false }: { budget: number; mentions?: Mention[]; exclude?: string[]; resolveExplicitMentions?: boolean }): Promise<ContextPack> {
     await this.prepare();
+    const requested = resolveExplicitMentions ? [...this.resolveMentions(request), ...mentions] : mentions;
+    const uniqueMentions = new Map<string, Mention>();
+    for (const mention of requested) {
+      const path = normalizePath(typeof mention === 'string' ? mention : mention.path);
+      if (!uniqueMentions.has(path)) uniqueMentions.set(path, mention);
+    }
     const excluded = exclude.map(normalizePath);
     const allowed = (p: string) => !excluded.some((entry) => p === entry || p.startsWith(`${entry}/`));
     return buildPack({ corpus: this.corpus(allowed), request, budget,
-      mentions: mentions.filter((mention) => allowed(normalizePath(typeof mention === 'string' ? mention : mention.path))) });
+      mentions: [...uniqueMentions.values()].filter((mention) => allowed(normalizePath(typeof mention === 'string' ? mention : mention.path))) });
   }
 
   /** Ranked candidates per role (used by the retrieval evaluation). */

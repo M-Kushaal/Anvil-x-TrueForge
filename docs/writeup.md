@@ -79,7 +79,7 @@ whose key was rejected). Free tiers and a laptop CPU during development.
 | C2 Write-up | — | This document: eight sections, scorecard with timestamps, models and costs declared |
 
 ## 7. Tools used
-Claude Code (Claude) for pair-programming, research and code review. Graphify (offline code graph). Vitest,
+Claude Code (Claude) and OpenAI Codex for implementation, documentation, and code review. Graphify (offline code graph). Vitest,
 @vscode/test-electron. README images: SVG branding and UI previews rendered from application components with example data.
 
 ## 8. Known limitations and next month

@@ -65,8 +65,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<AnvilA
       ?? vscode.workspace.textDocuments.find((d) => d.uri.fsPath === abs && d.isDirty)?.getText().replace(/\r\n/g, '\n'),
   });
   const engine = new ContextEngine(workspace);
-  void engine.build().then(() => log.appendLine(`Indexed ${engine.fileCount} files.`));
-  void startGraph(context, engine, root, log);
+  let graphStarted = false;
   const watcher = vscode.workspace.createFileSystemWatcher('**/*');
   const reindex = (uri: vscode.Uri) => {
     const r = rel(uri.fsPath);
@@ -197,11 +196,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<AnvilA
     onTurnEnd: (sessionId, state) => { changeSets.rename(state.title); void chats.save(sessionId, state); },
     contextFor: async (prompt) => {
       const config = readConfig();
-      await engine.prepare();
+      if (!graphStarted) {
+        graphStarted = true;
+        void startGraph(context, engine, root, log).catch((error: unknown) => log.appendLine(String(error)));
+      }
       const { contextBudget } = limitsFor(controller.snapshot.model || config.models[0] || '', config);
       const editor = editorMention(prompt);
-      const mentions = [...pinnedContext, ...(editor ? [editor] : []), ...engine.resolveMentions(prompt)];
-      const pack = await engine.pack(prompt, { budget: contextBudget, mentions, exclude: excludedContext });
+      const mentions = [...pinnedContext, ...(editor ? [editor] : [])];
+      const pack = await engine.pack(prompt, { budget: contextBudget, mentions, exclude: excludedContext, resolveExplicitMentions: true });
       return { text: pack.text, view: toContextView(pack, engine) };
     },
   });
@@ -236,7 +238,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<AnvilA
     }
   };
   const attachContext = async () => {
-    await engine.prepare();
     const files = await workspace.files();
     const picked = await vscode.window.showQuickPick(files.map((p) => ({ label: p, picked: pinnedContext.includes(p) })), { title: 'Anvil · Files to include with the next request', canPickMany: true, matchOnDescription: true });
     if (picked) {

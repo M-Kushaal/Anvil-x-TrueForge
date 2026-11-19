@@ -26,8 +26,15 @@ export function App({ initial = EMPTY }: { initial?: ChatState }) {
     return () => window.removeEventListener('message', onMessage);
   }, []);
 
+  const stopOnEscape = (event: KeyboardEvent) => {
+    if (event.key === 'Escape' && !event.isComposing && state.running) {
+      event.preventDefault();
+      send({ type: 'stop' });
+    }
+  };
+
   return (
-    <div class="app">
+    <div class="app" onKeyDown={stopOnEscape}>
       <Header title={state.title} />
       {state.items.length === 0 ? <EmptyState onPick={setDraft} /> : <Timeline state={state} />}
       {state.running && state.startedAt && <WorkingBar startedAt={state.startedAt} activity={state.activity} />}

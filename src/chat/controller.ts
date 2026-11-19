@@ -103,6 +103,7 @@ export class ChatController {
       }
       const context = this.deps.contextFor && wantsContext(prompt) ? await this.deps.contextFor(prompt).catch(() => undefined) : undefined;
       if (run !== this.runId) return; // replaced by New chat or a resumed chat meanwhile
+      if (this.stopRequested) { this.finish({ status: 'cancelled' }, false); return; }
       if (context) this.addItem({ kind: 'context', id: this.nextId('c'), context: context.view });
       const request = context ? `${prompt}\n\n${context.text}` : prompt;
       ({ outcome, reported } = await this.runWithRecovery(request, chain, run));
@@ -410,8 +411,8 @@ function noticeFor(outcome: TurnOutcome, pending: number): Notice | undefined {
 /** Greetings and one-word replies get no context pack: retrieval would only add unrelated files. */
 function wantsContext(prompt: string): boolean {
   if (/(^|\s)@\S/.test(prompt)) return true;
-  if (/^(hi|hey|hello|yo|thanks?|thank you|ok(ay)?|cool|nice|great|sure|yes|no)[\s!.?]*$/i.test(prompt)) return false;
-  return prompt.split(/\s+/).length >= 2;
+  if (/^(hi(?: there)?|hey(?: there)?|hello(?: there)?|yo|thanks?|thank you|ok(ay)?|cool|nice|great|sure|yes|no)[\s!.?]*$/i.test(prompt)) return false;
+  return prompt.split(/\s+/).length >= 2 || /\w[_.\/\\]\w|[a-z][A-Z]/.test(prompt);
 }
 
 function titleFrom(prompt: string): string {

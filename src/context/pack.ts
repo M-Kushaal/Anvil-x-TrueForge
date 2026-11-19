@@ -124,7 +124,7 @@ export function buildPack({ corpus, request, budget, mentions = [] }: { corpus: 
   ];
   let pack: ContextPack | undefined;
   for (const level of levels) {
-    pack = render({ corpus, request, intent, mentions, impl: impl[0], test, docs, related, dropped, level: { ...level, budget } });
+    pack = render({ corpus, intent, mentions, impl: impl[0], test, docs, related, dropped, level: { ...level, budget } });
     if (pack.used <= budget) break;
   }
   return pack!;
@@ -249,16 +249,21 @@ const hasWord = (name: string, word: string) => tokenize(name).includes(word);
 
 // ---- rendering ---------------------------------------------------------------------------------
 
-function render({ corpus, request, intent, mentions, impl, test, docs, related, dropped, level }: {
-  corpus: Corpus; request: string; intent: Intent; mentions: Mention[]; impl?: Candidate; test?: Candidate; docs?: Candidate;
+function render({ corpus, intent, mentions, impl, test, docs, related, dropped, level }: {
+  corpus: Corpus; intent: Intent; mentions: Mention[]; impl?: Candidate; test?: Candidate; docs?: Candidate;
   related: Array<{ file: string; weight: number }>; dropped: ContextPack['dropped']; level: RenderLevel;
 }): ContextPack {
   const { cap, extras, bodies, budget } = level;
   const items: PackItem[] = [];
-  const blocks: string[] = [`Context pack from Anvil. ${STRATEGY}`];
+  const heading = `Context pack from Anvil. ${STRATEGY}`;
+  const blocks: string[] = estimateTokens(heading) <= budget ? [heading] : [];
+  let length = blocks[0]?.length ?? 0;
   const push = (kind: ItemKind, path: string, score: number, reasons: string[], body: () => string) => {
     const block = `\n[${label(kind)}] ${path}${reasons.length ? ` (${reasons.join('; ')})` : ''}\n${bodies ? body() : ''}`.trimEnd();
+    const nextLength = length + (blocks.length ? 1 : 0) + block.length;
+    if (!bodies && Math.ceil(nextLength / 4) > budget) return;
     blocks.push(block);
+    length = nextLength;
     items.push({ kind, path, score: round(score), reasons, tokens: estimateTokens(block) });
   };
 
@@ -280,7 +285,8 @@ function render({ corpus, request, intent, mentions, impl, test, docs, related, 
     if (dropped.length) blocks.push(`\nNot included: ${dropped.map((d) => `${d.path} (${d.reason})`).join('; ')}.`);
   }
   const targets = items.filter((i) => i.kind === 'impl' || i.kind === 'test' || i.kind === 'docs').map((i) => i.path);
-  blocks.push(`\nTask (repeated): ${request.trim()}${targets.length ? `\nLikely files to change: ${targets.join(', ')}` : ''}`);
+  const summary = `\nLikely files to change: ${targets.join(', ')}`;
+  if (targets.length && (bodies || estimateTokens(blocks.join('\n') + '\n' + summary) <= budget)) blocks.push(summary);
 
   const text = blocks.join('\n');
   return { strategy: STRATEGY, budget, used: estimateTokens(text), roles: intent.roles, items, dropped, text };

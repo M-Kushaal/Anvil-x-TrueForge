@@ -27,30 +27,20 @@ export function ToolRow({ item }: { item: Item<'tool'> }) {
   const statusText = { running: 'running', waiting: 'waiting for you', done: 'done', error: 'failed', stopped: 'stopped' }[item.status];
   return (
     <>
-      <div
-        class="row clickable"
-        role="button"
-        tabIndex={0}
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(!open); } }}
-        title={statusText}
-      >
-        <span class={`dot ${item.status}`} aria-label={statusText} />
+      <div class="row">
+        <span class={`dot ${item.status}`} aria-hidden="true" />
         <span class="row-main">
-          <span class="verb">{verb}</span>
-          {target && (
-            <button
-              class={`target${path ? ' link' : ''}`}
-              onClick={(e) => {
-                if (!path) return;
-                e.stopPropagation();
-                // Edit rows open the per-hunk review; other rows open the file.
-                send(EDIT_TOOLS.has(item.name) ? { type: 'review', path } : { type: 'openFile', path });
-              }}
-              title={EDIT_TOOLS.has(item.name) ? `Review ${path}` : path}
-            >{target}</button>
-          )}
+          <button type="button" class="row-toggle text-btn" aria-expanded={open}
+            aria-label={`${verb} ${target ?? ''} details (${statusText})`.replace(/ +/g, ' ')}
+            onClick={() => setOpen(!open)}>
+            <span class="verb">{verb}</span>
+            <span aria-hidden="true" class={`codicon codicon-chevron-${open ? 'down' : 'right'}`} />
+          </button>
+          {target && (path ? (
+            <button type="button" class="target link"
+              onClick={() => send(EDIT_TOOLS.has(item.name) ? { type: 'review', path } : { type: 'openFile', path })}
+              title={EDIT_TOOLS.has(item.name) ? `Review ${path}` : path}>{target}</button>
+          ) : <span class="target">{target}</span>)}
           {item.summary && <span class="summary">· {withStats(stripTarget(item.summary, [path, target]))}</span>}
         </span>
       </div>
@@ -75,21 +65,14 @@ export function ThreadBlock({ item, steps, children }: { item: Item<'thread'>; s
   const [open, setOpen] = useState(true);
   return (
     <div>
-      <div
-        class="row clickable thread-head"
-        role="button"
-        tabIndex={0}
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(!open); } }}
-      >
+      <button type="button" class="row clickable thread-head" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span class={`dot ${item.status}`} />
         <span class="row-main">
           <span class="verb">Subagent</span>
           <span class="summary">{item.title} · {plural(steps, 'step')}</span>
         </span>
         <span class={`codicon codicon-chevron-${open ? 'down' : 'right'}`} />
-      </div>
+      </button>
       {open && <div class="thread">{children}</div>}
     </div>
   );

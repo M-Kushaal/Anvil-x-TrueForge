@@ -54,7 +54,7 @@ outlines and line-numbered snippets; the agent reads more on demand. Per request
    request, Graphify PageRank; files that match only the request's subject words are penalised.
 4. Test and docs partners of the chosen file: Graphify links, naming, and mentions of the pattern.
 5. Pack under the budget: outline, the pattern to copy, where it is registered, the matching test and
-   docs section, related files, a not-included list with reasons, and the task repeated at the end.
+   docs section, related files, a not-included list with reasons, and a short list of candidate files.
    Snippets shrink, then extras drop, until it fits.
 
 Measured on Flask 3.1.3 over 8 tasks with known target files (`npm run eval`):

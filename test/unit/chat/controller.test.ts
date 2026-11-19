@@ -252,9 +252,11 @@ describe('ChatController resilience', () => {
       onApproval: async () => ({ status: 'allow' }), ensureReady: async () => undefined, contextFor,
     });
     await controller.send('hi');
+    await controller.send('hello there');
     expect(contextFor).not.toHaveBeenCalled();
+    await controller.send('get_debug_flag');
     await controller.send('add a config command');
-    expect(contextFor).toHaveBeenCalledOnce();
+    expect(contextFor).toHaveBeenCalledTimes(2);
   });
 
   it('saves the chat after each turn and resumes it on the same session', async () => {

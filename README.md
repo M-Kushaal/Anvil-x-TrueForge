@@ -102,6 +102,8 @@ opens Flask in an Extension Development Host. Try:
 
 > Add a CLI command that prints the app configuration. Mask sensitive values, and include tests and documentation.
 
+For the exact competition prompts and recording steps, see the [Round 1 demo checklist](docs/demo.md).
+
 To run the Flask evaluation or live tests, see the [development guide](docs/development.md#optional-integration-tests).
 
 </details>
@@ -149,7 +151,7 @@ model settings, recovery behavior, and current limitations.
 ## Develop and verify
 
 ```sh
-npm run check       # Typechecks + 229 unit/component tests
+npm run check       # Typechecks + unit and component tests
 npm run build       # Development bundles
 npm run package     # Production bundles
 npm run test:e2e    # Review flow inside a real VS Code instance

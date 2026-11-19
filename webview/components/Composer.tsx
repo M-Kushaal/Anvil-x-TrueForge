@@ -1,4 +1,4 @@
-// Auto-growing input. Enter sends, Shift+Enter adds a line, Esc stops a running turn.
+// Auto-growing input. Enter sends, Shift+Enter adds a line.
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { send } from '../host';
 
@@ -28,7 +28,6 @@ export function Composer({ running, model, draft, offline, onDraftUsed }: { runn
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); }
-    if (e.key === 'Escape' && running) { e.preventDefault(); send({ type: 'stop' }); }
   };
 
   return (

@@ -98,6 +98,17 @@ describe('context pack on the fixture repo', () => {
     expect(text).toContain('Likely files to change: src/app/cli.py, tests/test_cli.py, docs/cli.rst');
   });
 
+  it('keeps a long request and excess pinned files from overrunning the pack budget', async () => {
+    const request = TASK_B + ' Keep the existing CLI behavior.'.repeat(200);
+    const pack = await engine.pack(request, {
+      budget: 100,
+      mentions: Array.from({ length: 50 }, () => 'src/app/config.py'),
+    });
+    expect(pack.used).toBeLessThanOrEqual(100);
+    expect(pack.text).not.toContain(request);
+    expect(pack.items.filter((item) => item.kind === 'mention')).toHaveLength(1);
+  });
+
   it('never exceeds the budget, shrinking snippets as needed', async () => {
     for (const budget of [3000, 1200, 600]) {
       const pack = await engine.pack(TASK_B, { budget });

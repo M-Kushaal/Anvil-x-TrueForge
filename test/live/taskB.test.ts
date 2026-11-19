@@ -89,15 +89,14 @@ describe('Task B (live)', () => {
     cpSync(FLASK, copy, { recursive: true, filter: (src) => !/[\\/]\.git$/.test(src) });
     for (const d of drafts.all()) writeFileSync(path.join(copy, d.path), d.proposed);
     const env = { ...process.env, PYTHONPATH: path.join(copy, 'src') };
-    const pytest = (() => {
-      try { return execFileSync(pythonCommand, ['-m', 'pytest', 'tests/test_cli.py', '-q', '-p', 'no:cacheprovider'], { cwd: copy, env }).toString(); }
-      catch (e) { return String((e as { stdout?: Buffer }).stdout ?? e); }
-    })();
+    const pytest = execFileSync(pythonCommand, ['-m', 'pytest', 'tests/test_cli.py', '-q', '-p', 'no:cacheprovider'], { cwd: copy, env }).toString();
     console.log(pytest.split('\n').slice(-8).join('\n'));
     const help = execFileSync(pythonCommand, ['-m', 'flask', '--help'], { cwd: copy, env }).toString();
     console.log(help.split('\n').filter((l) => /config|routes|shell|run/.test(l)).join('\n'));
     expect(help).toMatch(/^\s+config\s/m);
     expect(pytest).toMatch(/\d+ passed/);
-    expect(pytest).not.toMatch(/failed|error/i);
+    writeFileSync(path.join(copy, 'anvil_demo.py'), "from flask import Flask\napp = Flask(__name__)\napp.config.update(DB_PASSWORD='fake-password', AUTH_TOKEN='fake-token', API_KEY='fake-key', PUBLIC_NAME='anvil-demo')\n");
+    const json = execFileSync(pythonCommand, ['-m', 'flask', '--app', 'anvil_demo', 'config'], { cwd: copy, env }).toString();
+    expect(JSON.parse(json)).toMatchObject({ DB_PASSWORD: '***', AUTH_TOKEN: '***', API_KEY: '***', SECRET_KEY: '***', PUBLIC_NAME: 'anvil-demo' });
   }, 1_200_000);
 });

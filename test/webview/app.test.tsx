@@ -12,6 +12,15 @@ const base: ChatState = { title: 'Add a command', items: [], running: false, mod
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('chat webview', () => {
+  it('stops with Escape when focus is on a tool control', () => {
+    const view = render(<App initial={{ ...base, running: true, items: [{
+      kind: 'tool', id: 'r1', threadId: 'main', name: 'read_file',
+      args: '{"path":"src/app.py"}', status: 'running',
+    }] }} />);
+    fireEvent.keyDown(view.getByRole('button', { name: /details \(running\)/i }), { key: 'Escape' });
+    expect(send).toHaveBeenCalledWith({ type: 'stop' });
+  });
+
   it('shows the empty state with suggestions and shortcuts', () => {
     const view = render(<App initial={base} />);
     expect(view.getByText('Anvil')).toBeTruthy();
@@ -147,7 +156,7 @@ describe('chat webview', () => {
       kind: 'tool', id: 'command-1', threadId: 'main', name: 'run_command',
       args: JSON.stringify({ command: 'npm test' }), status: 'error', summary: 'Error: npm test · exit 1', output,
     }] }} />);
-    const row = view.container.querySelector('.row.clickable');
+    const row = view.getByRole('button', { name: /details \(failed\)/i });
     expect(row).toBeTruthy();
     fireEvent.click(row!);
     expect(view.getByText('Arguments')).toBeTruthy();

@@ -13,7 +13,7 @@ import type { RecoveryNotice } from '../../src/forge/resilience';
 import { FLASK, SERVER, startLive, type Live } from './harness';
 
 const BROKEN = 'broken/llama';
-const FALLBACK = process.env.ANVIL_FALLBACK ?? 'ollama/qwen2-5-coder-3b';
+const FALLBACK = process.env.ANVIL_FALLBACK ?? 'ollama/qwen2-5-3b';
 const sdk = new TrueForge({ baseUrl: SERVER });
 const drafts = new DraftStore();
 const real = (p: string) => readFileSync(path.join(FLASK, p), 'utf8').replace(/\r\n/g, '\n');

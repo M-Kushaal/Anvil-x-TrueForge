@@ -22,17 +22,23 @@ export function Timeline({ state }: { state: ChatState }) {
   };
 
   const threadIds = new Set(state.items.filter((i) => i.kind === 'thread').map((i) => i.id));
-  const inThread = (item: TimelineItem) => (item.kind === 'tool' || item.kind === 'text') && threadIds.has(item.threadId);
+  const threads = new Map<string, TimelineItem[]>();
+  const main: TimelineItem[] = [];
+  for (const item of state.items) {
+    if ((item.kind === 'tool' || item.kind === 'text') && threadIds.has(item.threadId)) {
+      const children = threads.get(item.threadId) ?? [];
+      children.push(item);
+      threads.set(item.threadId, children);
+    } else main.push(item);
+  }
 
   return (
-    <div class="timeline" ref={ref} onScroll={onScroll} aria-live="polite">
-      {state.items.filter((item) => !inThread(item)).map((item) => {
-        if (item.kind === 'thread') {
-          const children = state.items.filter((c) => inThread(c) && (c.kind === 'tool' || c.kind === 'text') && c.threadId === item.id);
-          const steps = children.filter((c) => c.kind === 'tool').length;
-          return <ThreadBlock key={item.id} item={item} steps={steps}>{children.map(render)}</ThreadBlock>;
-        }
-        return render(item);
+    <div class="timeline" ref={ref} onScroll={onScroll} role="region" aria-label="Chat activity" tabIndex={0}>
+      {main.map((item) => {
+        if (item.kind !== 'thread') return render(item);
+        const children = threads.get(item.id) ?? [];
+        const steps = children.filter((child) => child.kind === 'tool').length;
+        return <ThreadBlock key={item.id} item={item} steps={steps}>{children.map(render)}</ThreadBlock>;
       })}
       {!state.running && state.lastTurn && state.lastTurn.ms > 0 && (
         <div class="turn-meta">{compactNumber(state.lastTurn.tokens)} tokens in {duration(state.lastTurn.ms)}</div>
