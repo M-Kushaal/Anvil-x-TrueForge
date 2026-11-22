@@ -4,7 +4,7 @@ import type { ChatState, ContextView, FileChange, PlanStep, TimelineItem, Verifi
 import { applyEvent, initialState } from '../forge/timeline';
 import type { ApprovalRequest, Decision, ForgeClient, TurnOutcome } from '../forge/client';
 import { buildSpec } from '../forge/agentSpec';
-import { classify, describeStep, nextStep, type Classified } from '../forge/resilience';
+import { classify, describeStep, MAX_TURN_ATTEMPTS, nextStep, type Classified } from '../forge/resilience';
 import { plural } from '../shared/text';
 
 export interface ChatDeps {
@@ -15,6 +15,7 @@ export interface ChatDeps {
   models: () => string[];
   post: (state: ChatState) => void;
   onApproval: (request: ApprovalRequest) => Promise<Decision>;
+  onQuestion?: (request: ApprovalRequest) => Promise<string>;
   /** Makes sure the MCP connector is registered; throws a readable message if TrueForge is down. */
   ensureReady: () => Promise<void>;
   /** The context pack for a request: text appended to the message, and its view for the timeline. */
@@ -39,6 +40,8 @@ const FRAME_MS = 33; // batch streamed updates to ~30 fps so the webview never f
 export class ChatController {
   private state: ChatState;
   private sessionId: string | undefined;
+  private requestAbort: AbortController | undefined;
+  private sessionModel: string | undefined;
   private flushTimer: ReturnType<typeof setTimeout> | undefined;
   private seq = 0;
   private turns = 0;
@@ -67,6 +70,31 @@ export class ChatController {
     return this.sessionId;
   }
 
+  setInlineSelection(inlineSelection: ChatState['inlineSelection']): void {
+    this.update({ inlineSelection });
+    this.flushNow();
+  }
+
+  showUsage(): void {
+    const usage = this.state.usage;
+    this.addNotice({ level: 'info', title: 'Chat token usage', detail: usage
+      ? `Input: ${usage.input.toLocaleString()}; Output: ${usage.output.toLocaleString()}; Total: ${(usage.input + usage.output).toLocaleString()}. Reported across ${usage.turns} completed turn(s), including retries. The active turn is included when its metrics arrive.`
+      : 'No input/output token metrics have been reported for this chat yet. Older saved chats may not include usage.' });
+    if (this.sessionId) this.deps.onTurnEnd?.(this.sessionId, this.state);
+  }
+
+  async selectModel(model: string): Promise<void> {
+    if (this.state.running) return;
+    const run = this.runId;
+    const session = this.sessionId;
+    if (session) await this.deps.client.setSpec(session, this.spec(model));
+    if (run !== this.runId || this.state.running || session !== this.sessionId) return;
+    this.sessionModel = model;
+    this.modelIndex = Math.max(this.deps.models().indexOf(model), 0);
+    this.update({ model });
+    this.flushNow();
+  }
+
   async send(text: string): Promise<void> {
     const prompt = text.trim();
     if (!prompt || this.state.running) return;
@@ -84,6 +112,7 @@ export class ChatController {
     this.switchNote = undefined;
     this.turns++;
     const run = ++this.runId;
+    this.requestAbort = new AbortController();
 
     let outcome: TurnOutcome;
     let reported = false;
@@ -91,9 +120,21 @@ export class ChatController {
       await this.deps.ensureReady();
       if (this.stale(run)) { if (run === this.runId) this.finish({ status: 'cancelled' }, false); return; }
       const chain = this.deps.models();
-      this.modelIndex = Math.min(this.modelIndex, Math.max(chain.length - 1, 0));
+      this.modelIndex = Math.max(this.sessionModel ? chain.indexOf(this.sessionModel) : 0, 0);
+      const selectedModel = chain[this.modelIndex] ?? model;
+      this.update({ model: selectedModel });
+      if (this.sessionId && this.sessionModel !== selectedModel) {
+        try {
+          await this.deps.client.setSpec(this.sessionId, this.spec(selectedModel));
+        } catch (error) {
+          if (run !== this.runId) return;
+          if (!(error instanceof Error && 'statusCode' in error && error.statusCode === 404)) throw error;
+          this.sessionId = undefined;
+        }
+        if (this.stale(run)) { if (run === this.runId) this.finish({ status: 'cancelled' }, false); return; }
+      }
       if (!this.sessionId) {
-        const created = await this.deps.client.createSession(this.spec(chain[this.modelIndex] ?? model));
+        const created = await this.deps.client.createSession(this.spec(selectedModel));
         if (this.stale(run)) {
           void this.deps.client.cancel(created);
           if (run === this.runId) this.finish({ status: 'cancelled' }, false);
@@ -101,6 +142,7 @@ export class ChatController {
         }
         this.sessionId = created;
       }
+      this.sessionModel = selectedModel;
       const context = this.deps.contextFor && wantsContext(prompt) ? await this.deps.contextFor(prompt).catch(() => undefined) : undefined;
       if (run !== this.runId) return; // replaced by New chat or a resumed chat meanwhile
       if (this.stopRequested) { this.finish({ status: 'cancelled' }, false); return; }
@@ -118,13 +160,14 @@ export class ChatController {
     if (!this.state.running) return;
     this.stopRequested = true;
     this.wake?.();
-    if (this.sessionId) void this.deps.client.cancel(this.sessionId);
+    this.requestAbort?.abort();
   }
 
   newChat(): void {
     this.stop();
     this.runId++;
     this.sessionId = undefined;
+    this.sessionModel = undefined;
     this.modelIndex = 0;
     this.state = { ...initialState(this.deps.models()[0] ?? ''), changes: [], changeSetId: randomUUID(), connection: this.state.connection };
     this.deps.onChangeSet?.(this.state.changeSetId!, this.state.title);
@@ -132,25 +175,19 @@ export class ChatController {
   }
 
   /** Reopens a saved chat: its timeline comes back and new messages continue its TrueForge session. */
-  resume(chat: { sessionId: string; title: string; items: TimelineItem[]; changeSetId?: string }): void {
+  resume(chat: { sessionId: string; title: string; items: TimelineItem[]; changeSetId?: string; usage?: ChatState['usage'] }): void {
     this.stop();
     this.runId++;
     this.sessionId = chat.sessionId;
+    this.sessionModel = undefined;
     this.modelIndex = 0;
     this.turns = chat.items.filter((i) => i.kind === 'user').length;
     // Keep new row ids clear of the restored ones (u3, n12, c4, plan2...).
     const used = chat.items.map((i) => Number(/^[a-z]{1,4}(\d+)$/.exec(i.id)?.[1] ?? 0));
     this.seq = Math.max(this.seq, ...used);
-    this.state = { ...initialState(this.deps.models()[0] ?? ''), title: chat.title, items: chat.items, changes: [], changeSetId: chat.changeSetId ?? `session-${chat.sessionId}`, connection: this.state.connection };
+    this.state = { ...initialState(this.deps.models()[0] ?? ''), title: chat.title, items: chat.items, usage: chat.usage, changes: [], changeSetId: chat.changeSetId ?? `session-${chat.sessionId}`, connection: this.state.connection };
     this.deps.onChangeSet?.(this.state.changeSetId!, chat.title);
     this.flushNow();
-    // Back on the primary model; a session deleted in TrueForge is replaced on the next message.
-    const model = this.deps.models()[0];
-    if (model) {
-      this.deps.client.setSpec(chat.sessionId, this.spec(model)).catch(() => {
-        if (this.sessionId === chat.sessionId) this.sessionId = undefined;
-      });
-    }
   }
 
   /** Re-sends the current state (e.g. when the webview reloads). */
@@ -219,19 +256,23 @@ export class ChatController {
     let history = false; // the session holds work from this request (a fresh one can shed it)
 
     const cancelled = { outcome: { status: 'cancelled' as const }, reported: false };
-    for (;;) {
+    for (let attempt = 1; ; attempt++) {
       if (this.stale(run)) return cancelled;
       const { outcome, produced } = await this.runOnce(input, run);
-      if (run !== this.runId) return cancelled;
+      if (this.stale(run)) return cancelled;
       history ||= produced;
 
-      if (outcome.status === 'done' && !this.stopRequested && !this.userDeclined && nudges < MAX_PLAN_NUDGES && this.unfinishedPlan().length) {
+      if (outcome.status === 'done' && attempt < MAX_TURN_ATTEMPTS && !this.userDeclined && nudges < MAX_PLAN_NUDGES && this.unfinishedPlan().length) {
         // The agent stopped with its own plan unfinished (small models do this after a compaction).
         nudges++;
         input = message(`${CONTINUE} Unfinished steps of your plan: ${this.unfinishedPlan().join('; ')}.`);
         continue;
       }
-      if (outcome.status !== 'error') return { outcome, reported: false };
+      if (outcome.status !== 'error' || outcome.retryable === false) return { outcome, reported: false };
+      if (attempt === MAX_TURN_ATTEMPTS) {
+        this.addNotice({ level: 'error', title: 'Retry limit reached', detail: outcome.message ?? 'TrueForge did not finish the request.' });
+        return { outcome, reported: true };
+      }
 
       const error = classify(outcome.message);
       if (error.kind === 'too_large' && history && freshSessions < MAX_FRESH_SESSIONS) {
@@ -270,9 +311,11 @@ export class ChatController {
         await this.wait(step.delayMs ?? 0);
         if (this.stale(run)) return cancelled;
         this.modelIndex = step.to;
-        await this.deps.client.setSpec(this.sessionId!, this.spec(chain[step.to]!));
+        const model = chain[step.to]!;
+        await this.deps.client.setSpec(this.sessionId!, this.spec(model));
         if (this.stale(run)) return cancelled;
-        this.update({ model: chain[step.to]! });
+        this.sessionModel = model;
+        this.update({ model });
       }
       // A turn that got partway keeps its history in the session; just ask it to continue.
       if (produced) input = message(CONTINUE);
@@ -286,8 +329,20 @@ export class ChatController {
       sessionId: this.sessionId!,
       input,
       handlers: {
+        onQuestion: async (request) => {
+          if (this.stale(run)) return 'This task was stopped.';
+          return this.deps.onQuestion ? this.deps.onQuestion(request) : 'Please continue with reasonable defaults.';
+        },
         onEvent: (event) => {
           if (run !== this.runId) return;
+          if (event.type === 'turn.done' && event.state?.metrics) {
+            const metrics = event.state.metrics;
+            const usage = this.state.usage ?? { input: 0, output: 0, turns: 0 };
+            if (metrics.totalInputTokens !== undefined && metrics.totalOutputTokens !== undefined) {
+              this.update({ usage: { input: usage.input + metrics.totalInputTokens,
+                output: usage.output + metrics.totalOutputTokens, turns: usage.turns + 1 } });
+            }
+          }
           if (event.type === 'model.message' || event.type === 'tool.response') produced = true;
           // The model is answering again: the "retrying…" line no longer applies.
           if (event.type === 'model.message' && this.state.activity) this.state = { ...this.state, activity: undefined };
@@ -303,6 +358,7 @@ export class ChatController {
         },
       },
       shouldStop: () => this.stale(run),
+      signal: this.requestAbort?.signal,
     });
     return { outcome, produced };
   }

@@ -1,8 +1,9 @@
 // Runs one inline edit through TrueForge: its own short session, only read_file + propose_edit,
 // and an approval gate that adds the scope lock on top of normal edit validation.
+import { setTimeout as delay } from 'node:timers/promises';
 import { buildSpec } from '../forge/agentSpec';
 import type { ApprovalRequest, Decision, ForgeClient, TurnOutcome } from '../forge/client';
-import { classify, describeStep, nextStep, type RecoveryNotice } from '../forge/resilience';
+import { classify, describeStep, MAX_TURN_ATTEMPTS, nextStep, type RecoveryNotice } from '../forge/resilience';
 import { firstLine, type ForgeEvent } from '../forge/timeline';
 import { isPendingSummary, validateEdit, type EditContext } from '../mcp/editTools';
 import { inlineSession, newEntryId, type InlineHistory, type InlineStatus } from './history';
@@ -20,9 +21,11 @@ export interface InlineDeps {
 
 export interface InlineResult {
   outcome: TurnOutcome;
-  /** Pending hunks for the file after the run (0 means nothing was proposed). */
+  /** Pending hunks for the file if this run staged an edit. */
   pending: number;
   sessionId?: string;
+  /** Whether the turn emitted model or tool activity, matching chat recovery. */
+  produced?: boolean;
 }
 
 export interface InlineHandle {
@@ -34,43 +37,58 @@ export interface InlineHandle {
  * Retries or falls back across the model chain (same policy as chat). Each attempt is a new turn
  * (in the shared inline session when there is one); a failed attempt writes nothing.
  */
-export function withFallback({ start, chain, onNotice, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }: {
+export function withFallback({ start, chain, onNotice }: {
   start: (model: string) => InlineHandle;
-  chain: string[];
+  chain: string[] | (() => Promise<string[]>);
   onNotice: (notice: RecoveryNotice, model: string) => void;
-  sleep?: (ms: number) => Promise<void>;
 }): InlineHandle {
   let current: InlineHandle | undefined;
-  let cancelled = false;
+  const abort = new AbortController();
+  const stopped: InlineResult = { outcome: { status: 'cancelled' }, pending: 0 };
   const done = (async (): Promise<InlineResult> => {
+    let models: string[];
+    try {
+      models = typeof chain === 'function' ? await chain() : chain;
+    } catch (error) {
+      return abort.signal.aborted ? stopped : { outcome: { status: 'error', message: String(error) }, pending: 0 };
+    }
+    if (abort.signal.aborted) return stopped;
     let index = 0;
     let retries = 0;
     let lastKind = '';
-    for (;;) {
-      current = start(chain[index] ?? '');
+    const readyAt: Record<number, number> = {};
+    for (let attempt = 1; ; attempt++) {
+      current = start(models[index] ?? '');
       const result = await current.done;
-      if (cancelled || result.outcome.status !== 'error' || result.pending > 0) return result;
-      const error = classify(result.outcome.message);
-      if (error.kind !== lastKind) retries = 0;
-      lastKind = error.kind;
-      const step = nextStep({ chain, index, retries, error });
-      onNotice(describeStep({ chain, index, error, step }), chain[step.action === 'switch' ? step.to : index] ?? '');
-      if (step.action === 'give_up') return result;
-      if (step.action === 'retry') {
-        retries++;
-        await sleep(step.delayMs);
-      } else {
-        retries = error.kind === 'rate_limit' ? retries + 1 : 0;
-        await sleep(step.delayMs ?? 0);
-        index = step.to;
+      current = undefined;
+      if (abort.signal.aborted) return { ...result, outcome: stopped.outcome };
+      if (result.outcome.status !== 'error' || result.outcome.retryable === false || result.pending > 0) return result;
+      if (attempt === MAX_TURN_ATTEMPTS) {
+        onNotice({ level: 'error', title: 'Retry limit reached', detail: result.outcome.message ?? 'TrueForge did not finish the inline edit.' }, models[index] ?? '');
+        return result;
       }
-      if (cancelled) return { outcome: { status: 'cancelled' }, pending: result.pending };
+      const error = classify(result.outcome.message);
+      if (error.kind !== lastKind || result.produced) retries = 0;
+      lastKind = error.kind;
+      if (error.kind === 'rate_limit') readyAt[index] = Date.now() + (error.retryAfterMs ?? 10_000);
+      const cooldowns = Object.fromEntries(Object.entries(readyAt).map(([i, time]) => [i, time - Date.now()]));
+      const step = nextStep({ chain: models, index, retries, error, cooldowns });
+      onNotice(describeStep({ chain: models, index, error, step }), models[step.action === 'switch' ? step.to : index] ?? '');
+      if (step.action === 'give_up') return result;
+      try {
+        await delay(step.delayMs ?? 0, undefined, { signal: abort.signal });
+      } catch (error) {
+        if (!abort.signal.aborted) throw error;
+      }
+      if (abort.signal.aborted) return stopped;
+      retries = step.action === 'retry' || error.kind === 'rate_limit' ? retries + 1 : 0;
+      if (step.action === 'switch') index = step.to;
     }
   })();
   return {
     done,
     cancel() {
-      cancelled = true;
+      abort.abort();
       current?.cancel();
     },
   };
@@ -83,9 +101,15 @@ export function startInlineEdit({ deps, request, model, onEvent }: {
   onEvent?: (event: ForgeEvent) => void;
 }): InlineHandle {
   let sessionId: string | undefined;
+  const turnAbort = new AbortController();
   let cancelled = false;
   const generation = deps.edits.generation?.();
 
+  let produced = false;
+  let staged = false;
+  let responseSeen = false;
+  const grants: Array<() => void> = [];
+  const revoke = () => { for (const release of grants.splice(0)) release(); };
   const onApproval = async ({ name, args }: ApprovalRequest): Promise<Decision> => {
     if (cancelled || generation !== deps.edits.generation?.()) return { status: 'deny', reason: 'This inline edit was cancelled.' };
     if (name !== 'propose_edit') return { status: 'deny', reason: 'Inline edits may only use propose_edit.' };
@@ -96,16 +120,19 @@ export function startInlineEdit({ deps, request, model, onEvent }: {
     const { search } = parsed;
     const path = deps.edits.normalize ? deps.edits.normalize(parsed.path) : parsed.path;
     if (path !== request.path) return { status: 'deny', reason: `Error: only ${request.path} may be edited.` };
-    const text = deps.edits.drafts.view(path) ?? request.text;
+    const text = deps.edits.drafts.view(path) ?? await deps.edits.realText(path);
+    if (cancelled || generation !== deps.edits.generation?.() || text !== request.text) {
+      return { status: 'deny', reason: 'The selected document changed. Select the code again before editing.' };
+    }
     const outside = scopeViolation({ text, search, startLine: request.startLine, endLine: request.endLine });
     if (outside) return { status: 'deny', reason: outside };
-    deps.edits.authorize?.(name, args);
+    const release = deps.edits.authorize?.(name, args, () => { staged = true; });
+    if (release) grants.push(release);
     return { status: 'allow' };
   };
 
   const entryId = newEntryId();
   const run = (async (): Promise<InlineResult> => {
-    const before = deps.edits.drafts.pending(request.path).length;
     try {
       await deps.ensureReady();
       await deps.history?.add({
@@ -121,31 +148,34 @@ export function startInlineEdit({ deps, request, model, onEvent }: {
         config: { ...config, dynamic_sub_agents: { enabled: false }, ask_user_questions: { enabled: false }, iteration_limit: 8 },
       });
       sessionId = deps.history ? await inlineSession(deps.client, deps.history, spec) : await deps.client.createSession(spec);
-      if (cancelled) return { outcome: { status: 'cancelled' }, pending: before, sessionId };
-      let staged = false;
+      if (cancelled) return { outcome: { status: 'cancelled' }, pending: 0, sessionId };
       const id = sessionId;
       const outcome = await deps.client.runTurn({
         sessionId,
         input: [{ type: 'user.message', content: buildInlinePrompt(request) }],
         handlers: {
           onEvent: (e) => {
+            if (e.type === 'model.message' || e.type === 'tool.response') produced = true;
             onEvent?.(e);
             // The edit is staged: end the turn instead of spending a model call on a summary.
-            if (!staged && e.type === 'tool.response' && isPendingSummary(firstLine(e.content))) {
-              staged = true;
+            if ((!deps.edits.authorize || staged) && !responseSeen && e.type === 'tool.response' && isPendingSummary(firstLine(e.content))) {
+              responseSeen = true;
+              staged ||= !deps.edits.authorize;
               void deps.client.cancel(id);
             }
           },
           onApproval,
+          onAbnormalExit: revoke,
         },
         shouldStop: () => cancelled,
+        signal: turnAbort.signal,
       });
       const finished: TurnOutcome = staged && !cancelled ? { status: 'done', ...(outcome.tokens !== undefined ? { tokens: outcome.tokens } : {}) } : outcome;
-      return { outcome: finished, pending: deps.edits.drafts.pending(request.path).length, sessionId };
+      return { outcome: finished, produced, pending: staged ? deps.edits.drafts.pending(request.path).length : 0, sessionId };
     } catch (error) {
-      return { outcome: { status: 'error', message: error instanceof Error ? error.message : String(error) }, pending: before, ...(sessionId ? { sessionId } : {}) };
+      return { outcome: { status: 'error', message: error instanceof Error ? error.message : String(error) }, produced, pending: staged ? deps.edits.drafts.pending(request.path).length : 0, ...(sessionId ? { sessionId } : {}) };
     }
-  })();
+  })().finally(revoke);
   const done = run.then(async (result) => {
     await deps.history?.finish(entryId, statusOf(result), result.outcome.message);
     // The shared session outgrew the model's request limit: the next attempt starts a new one.
@@ -157,7 +187,8 @@ export function startInlineEdit({ deps, request, model, onEvent }: {
     done,
     cancel() {
       cancelled = true;
-      if (sessionId) void deps.client.cancel(sessionId);
+      revoke();
+      turnAbort.abort();
     },
   };
 }

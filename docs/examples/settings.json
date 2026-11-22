@@ -2,11 +2,13 @@
   "//": "Example VS Code settings for Anvil. Copy what you need into .vscode/settings.json of the project you open. Model names are as registered in TrueForge (npm run setup prints them). API keys never go here: they live in TrueForge or in anvil/.env.",
   "anvil.serverUrl": "http://localhost:8790",
   "anvil.models": [
+    "cerebras/gpt-oss-120b",
     "groq/gpt-oss-120b",
     "groq-2/gpt-oss-120b",
-    "cerebras/gpt-oss-120b",
+    "groq-backup/gpt-oss-120b",
     "groq/gpt-oss-20b",
-    "ollama/qwen2-5-3b"
+    "ollama/qwen2-5-3b",
+    "ollama/local"
   ],
   "anvil.leanProviders": [
     "groq"

@@ -57,23 +57,6 @@ export function stats(hunks: Hunk[]): { added: number; removed: number } {
   return hunks.reduce((acc, h) => ({ added: acc.added + h.newLines.length, removed: acc.removed + h.oldLines.length }), { added: 0, removed: 0 });
 }
 
-/**
- * Where `oldLine` of `from` ended up in `to` (0-based). Lines inside a changed region map to the
- * start of that region. Used to place a hunk in a file the user has edited since.
- */
-export function mapLine(from: string, to: string, oldLine: number): number {
-  let oldIndex = 0;
-  let newIndex = 0;
-  for (const part of diffArrays(splitLines(from), splitLines(to))) {
-    const count = part.value.length;
-    if (part.added) { newIndex += count; continue; }
-    if (oldLine < oldIndex + count) return part.removed ? newIndex : newIndex + (oldLine - oldIndex);
-    oldIndex += count;
-    if (!part.removed) newIndex += count;
-  }
-  return newIndex;
-}
-
 function finalize(hunk: Hunk): Hunk {
   return { ...hunk, id: `${hunk.oldStart}:${hunk.oldLines.length}:${hash(hunk.newLines.join('\n'))}` };
 }

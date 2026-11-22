@@ -5,6 +5,7 @@ import type { Store } from '../inline/history';
 
 export interface SavedChat {
   changeSetId?: string;
+  usage?: ChatState['usage'];
   sessionId: string;
   title: string;
   at: number;
@@ -29,8 +30,8 @@ export class ChatHistory {
   /** Saves (or updates) a chat; the most recent comes first. */
   async save(sessionId: string, state: ChatState): Promise<void> {
     if (!state.items.some((i) => i.kind === 'user')) return;
-    const chat: SavedChat = { sessionId, changeSetId: state.changeSetId, title: state.title, at: Date.now(), model: state.model, items: state.items };
-    await this.store.update(KEY, [chat, ...this.list().filter((c) => c.sessionId !== sessionId)].slice(0, LIMIT));
+    const chat: SavedChat = { usage: state.usage, sessionId, changeSetId: state.changeSetId, title: state.title, at: Date.now(), model: state.model, items: state.items };
+    await this.store.update(KEY, [chat, ...this.list().filter((c) => c.sessionId !== sessionId && (!chat.changeSetId || c.changeSetId !== chat.changeSetId))].slice(0, LIMIT));
   }
 
   async remove(sessionId: string): Promise<void> {

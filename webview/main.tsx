@@ -5,6 +5,7 @@ import './styles/tokens.css';
 import './styles/app.css';
 import type { ChatState, ToWebview } from '../src/shared/protocol';
 import { send } from './host';
+import { History } from './components/History';
 import { Composer } from './components/Composer';
 import { EmptyState, Header, WorkingBar } from './components/Chrome';
 import { Timeline } from './components/Timeline';
@@ -35,8 +36,10 @@ export function App({ initial = EMPTY }: { initial?: ChatState }) {
 
   return (
     <div class="app" onKeyDown={stopOnEscape}>
-      <Header title={state.title} />
+      <Header title={state.sidebar?.mode === 'inline' ? 'Inline edits' : state.sidebar?.mode === 'history' ? 'History' : state.title} />
+      {state.sidebar && state.sidebar.mode !== 'chat' ? <History history={state.sidebar} running={state.running} /> : <>
       {state.items.length === 0 ? <EmptyState onPick={setDraft} /> : <Timeline state={state} />}
+      </>}
       {state.running && state.startedAt && <WorkingBar startedAt={state.startedAt} activity={state.activity} />}
       {state.connection?.ok === false && (
         <div class="offline" role="alert">
@@ -54,7 +57,7 @@ export function App({ initial = EMPTY }: { initial?: ChatState }) {
       {!!state.contextExcluded?.length && <div class="attachments" aria-label="Excluded from initial context">
         {state.contextExcluded.map((path) => <button class="chip" key={path} title={`Include ${path} again`} onClick={() => send({ type: 'restoreContext', path })}>Excluded: {path} ×</button>)}
       </div>}
-      <Composer running={state.running} model={state.model} draft={draft} offline={state.connection?.ok === false} onDraftUsed={() => setDraft(undefined)} />
+      {state.sidebar?.mode !== 'history' && (state.sidebar?.mode !== 'inline' || state.inlineSelection) && <Composer inlineSelection={state.inlineSelection} running={state.running} model={state.model} draft={draft} offline={state.connection?.ok === false} onDraftUsed={() => setDraft(undefined)} />}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 // Read-only tools: capped, line-numbered output that tells the model how to get more.
 import { z } from 'zod';
+import nodePath from 'node:path';
 import type { Workspace } from '../workspace/workspace';
 import { globToRegExp } from '../workspace/glob';
 import { defineTool, type Tool } from './tool';
@@ -76,34 +77,35 @@ interface Hit {
   context: string[];
 }
 
-async function searchFiles({ ws, query, glob, regex, within }: { ws: Workspace; query: string; glob?: string; regex: boolean; within?: string }): Promise<{ hits: Hit[]; files: number }> {
+async function searchFiles({ ws, query, glob, regex, within }: { ws: Workspace; query: string; glob?: string; regex: boolean; within?: string }): Promise<{ hits: Hit[]; count: number; perFile: Map<string, number> }> {
   const filter = glob ? globToRegExp(glob) : undefined;
-  const scope = within?.replace(/^\.?\/+/, '').replace(/\/+$/, '');
+  const scope = within ? nodePath.relative(ws.root, ws.resolve(within.replace(/\\/g, '/'))).split(nodePath.sep).join('/') : '';
   const matcher = regex ? new RegExp(query, 'i') : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
   const hits: Hit[] = [];
-  let files = 0;
+  let count = 0;
+  const perFile = new Map<string, number>();
   for (const path of await ws.files()) {
     if (filter && !filter.test(path)) continue;
     if (scope && scope !== '.' && path !== scope && !path.startsWith(`${scope}/`)) continue;
     const text = await ws.read(path).catch(() => '');
     const lines = text.split('\n');
-    let matched = false;
+    let inFile = 0;
     lines.forEach((line, i) => {
       if (!matcher.test(line)) return;
-      matched = true;
+      inFile++;
+      count++;
+      if (hits.length >= SEARCH_MAX_HITS) return;
       hits.push({ path, line: i + 1, text: line.trim().slice(0, 160), context: lines.slice(Math.max(0, i - 2), i + 3) });
     });
-    if (matched) files++;
+    if (inFile) perFile.set(path, inFile);
   }
-  return { hits, files };
+  return { hits, count, perFile };
 }
 
-function formatSearch(query: string, { hits, files }: { hits: Hit[]; files: number }): string {
-  const header = `"${query}" · ${plural(hits.length, 'hit')} in ${plural(files, 'file')}`;
+function formatSearch(query: string, { hits, count, perFile }: Awaited<ReturnType<typeof searchFiles>>): string {
+  const header = `"${query}" · ${plural(count, 'hit')} in ${plural(perFile.size, 'file')}`;
   if (hits.length === 0) return `${header}\nNo matches. Try a shorter query, a synonym, or find_symbol.`;
-  if (hits.length > SEARCH_MAX_HITS) {
-    const perFile = new Map<string, number>();
-    for (const h of hits) perFile.set(h.path, (perFile.get(h.path) ?? 0) + 1);
+  if (count > SEARCH_MAX_HITS) {
     const top = [...perFile].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([p, n]) => `  ${p} (${n})`);
     return [`${header}: too broad, refine the query or add a glob`, 'Top files:', ...top].join('\n');
   }

@@ -21,7 +21,7 @@ export function readConfig(): AnvilConfig {
   return {
     allowModelFallback: c.get('allowModelFallback', true),
     serverUrl: c.get('serverUrl', 'http://localhost:8790'),
-    models: c.get<string[]>('models', ['groq/gpt-oss-120b', 'groq-2/gpt-oss-120b', 'groq/gpt-oss-20b', 'groq-2/gpt-oss-20b', 'ollama/qwen2-5-3b']),
+    models: c.get<string[]>('models', ['cerebras/gpt-oss-120b', 'groq/gpt-oss-120b', 'groq-2/gpt-oss-120b', 'groq-backup/gpt-oss-120b', 'groq/gpt-oss-20b', 'groq-2/gpt-oss-20b', 'groq-backup/gpt-oss-20b', 'ollama/qwen2-5-3b', 'ollama/local']),
     contextBudget: c.get('contextBudget', 3000),
     graphifyCommand: c.get('graphifyCommand', 'graphify'),
     commandPath: c.get<string[]>('commandPath', []),

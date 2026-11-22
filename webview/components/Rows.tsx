@@ -24,6 +24,8 @@ export function ToolRow({ item }: { item: Item<'tool'> }) {
   const [open, setOpen] = useState(false);
   const { verb, target } = toolLabel(item.name, item.args, item.status);
   const path = pathArg(item.args);
+  const [answer, setAnswer] = useState('');
+  const question = parseQuestion(item.name, item.args);
   const statusText = { running: 'running', waiting: 'waiting for you', done: 'done', error: 'failed', stopped: 'stopped' }[item.status];
   return (
     <>
@@ -44,7 +46,15 @@ export function ToolRow({ item }: { item: Item<'tool'> }) {
           {item.summary && <span class="summary">· {withStats(stripTarget(item.summary, [path, target]))}</span>}
         </span>
       </div>
-      {item.name === 'run_command' && item.status === 'waiting' && (
+      {question && item.status === 'waiting' && <div class="question-card">
+        <strong>{question.question}</strong>
+        <div class="question-options">{question.options.map((option) => <button class="btn" onClick={() => send({ type: 'answerQuestion', id: item.id, text: option })}>{option}</button>)}</div>
+        <form onSubmit={(event) => { event.preventDefault(); if (answer.trim()) send({ type: 'answerQuestion', id: item.id, text: answer }); }}>
+          <input aria-label="Your answer" placeholder="Type your answer" value={answer} onInput={(event) => setAnswer(event.currentTarget.value)} />
+          <button class="btn primary" disabled={!answer.trim()}>Send</button>
+        </form>
+      </div>}
+      {item.name === 'run_command'  && item.status === 'waiting' && (
         <div class="approve" role="group" aria-label="Approve command">
           <pre class="approval-command">{commandArg(item.args)}</pre>
           <span class="approve-text">Run this command? It runs on a copy of the workspace, with your permissions.</span>
@@ -118,4 +128,13 @@ function prettyArgs(args: string): string {
   } catch {
     return args;
   }
+}
+
+function parseQuestion(name: string, args: string): { question: string; options: string[] } | undefined {
+  if (name !== 'ask_user_question') return undefined;
+  try {
+    const value = JSON.parse(args);
+    if (typeof value.question !== 'string') return undefined;
+    return { question: value.question, options: Array.isArray(value.options) ? value.options.filter((option: unknown): option is string => typeof option === 'string') : [] };
+  } catch { return undefined; }
 }

@@ -45,6 +45,7 @@ export type Step =
 const BACKOFF_MS = [1000, 3000];
 const MAX_RATE_WAIT_MS = 65_000; // per-minute windows always reset within this
 const MAX_TWIN_HOPS = 12;
+export const MAX_TURN_ATTEMPTS = 24;
 
 /**
  * Decides the next move after `error` on `chain[index]`, given retries already spent on that model.

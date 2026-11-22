@@ -225,11 +225,15 @@
             "type": "string"
           },
           "default": [
+            "cerebras/gpt-oss-120b",
             "groq/gpt-oss-120b",
             "groq-2/gpt-oss-120b",
+            "groq-backup/gpt-oss-120b",
             "groq/gpt-oss-20b",
             "groq-2/gpt-oss-20b",
-            "ollama/qwen2-5-3b"
+            "groq-backup/gpt-oss-20b",
+            "ollama/qwen2-5-3b",
+            "ollama/local"
           ],
           "description": "Models to use, as named in TrueForge (provider/model). The first is used normally; the others take over automatically if it fails."
         },
@@ -386,7 +390,8 @@
     "test:e2e": "npm run build && npm run build:e2e && node test/e2e/runTest.mts",
     "eval": "vitest run --configLoader runner --config test/config/eval.ts",
     "setup": "node scripts/setup.mjs",
-    "preview": "node scripts/preview.mjs"
+    "preview": "node scripts/preview.mjs",
+    "prepare:debug": "node scripts/prepare-debug.mjs"
   },
   "devDependencies": {
     "@testing-library/preact": "^3.2.6",

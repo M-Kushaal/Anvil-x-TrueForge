@@ -20,6 +20,13 @@ describe('ChatHistory', () => {
     expect(chats.list().map((c) => [c.sessionId, c.title])).toEqual([['s1', 'first, again'], ['s2', 'second']]);
   });
 
+  it('keeps one history entry when a chat gets a new server session', async () => {
+    const chats = new ChatHistory(memory());
+    await chats.save('old', { ...chat('first'), changeSetId: 'task' });
+    await chats.save('new', { ...chat('updated'), changeSetId: 'task' });
+    expect(chats.list()).toEqual([expect.objectContaining({ sessionId: 'new', title: 'updated' })]);
+  });
+
   it('does not save a chat with no messages', async () => {
     const chats = new ChatHistory(memory());
     await chats.save('s1', { ...chat('x'), items: [] });

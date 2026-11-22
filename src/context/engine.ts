@@ -87,7 +87,7 @@ export class ContextEngine {
     const uniqueMentions = new Map<string, Mention>();
     for (const mention of requested) {
       const path = normalizePath(typeof mention === 'string' ? mention : mention.path);
-      if (!uniqueMentions.has(path)) uniqueMentions.set(path, mention);
+      if (!uniqueMentions.has(path)) uniqueMentions.set(path, typeof mention === 'string' ? path : { ...mention, path });
     }
     const excluded = exclude.map(normalizePath);
     const allowed = (p: string) => !excluded.some((entry) => p === entry || p.startsWith(`${entry}/`));
@@ -121,7 +121,7 @@ export class ContextEngine {
   }
 
   outlineOf(path: string): OutlineSymbol[] {
-    return this.outlines.get(path) ?? [];
+    return this.outlines.get(normalizePath(path)) ?? [];
   }
 
   /** Exact name first, then case-insensitive, then near misses ("did you mean"). */
@@ -144,7 +144,9 @@ export class ContextEngine {
 
   /** Graph neighbours plus the conventional test and docs partners of a file. */
   related(path: string): Array<{ path: string; reason: string }> {
-    const out = neighbours(this.graph, path, 8).map((n) => ({ path: n.file, reason: `linked in the code (${Math.round(n.weight)} references)` }));
+    path = normalizePath(path);
+    const out = neighbours(this.graph, path, this.graph.links.get(path)?.size ?? 0)
+      .filter((n) => this.texts.has(n.file)).slice(0, 8).map((n) => ({ path: n.file, reason: `linked in the code (${Math.round(n.weight)} references)` }));
     const stem = (path.split('/').pop() ?? '').replace(/\.[^.]+$/, '');
     for (const f of this.texts.keys()) {
       if (f === path || out.some((o) => o.path === f)) continue;

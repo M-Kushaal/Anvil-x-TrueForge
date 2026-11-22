@@ -43,7 +43,7 @@ describe('secrets', () => {
   });
 
   it('refuses to read .env, and leaves it out of the command copy', async () => {
-    const { root, run } = setup();
+    const { root, run } = setup({ snapshot: () => [{ path: '.env', text: 'unsaved example' }] });
     writeFileSync(path.join(root, '.env'), 'GROQ_API_KEY=secret');
     await expect(createWorkspace({ root }).read('.env')).rejects.toThrow(/credentials/);
     const out = await run.run({ command: `node -e "process.stdout.write(String(require('fs').existsSync('.env')))"` });

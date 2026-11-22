@@ -6,7 +6,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import type { DraftStore } from '../drafts/store';
 import { plural } from '../shared/text';
-import { IGNORED_DIRS, isSecretPath, withoutSecrets, type Workspace } from '../workspace/workspace';
+import { isCommandSnapshotPath, withoutSecrets, type Workspace } from '../workspace/workspace';
 import { defineTool, type Tool } from './tool';
 
 export interface CommandResult {
@@ -129,15 +129,15 @@ async function shadowCopy(ws: Workspace, dir: string, overlays: Array<{ path: st
     // Never preserve symlinks/junctions into the original tree or outside the workspace.
     filter: async (src) => {
       signal.throwIfAborted();
-      return src === ws.root || (!IGNORED_DIRS.has(path.basename(src)) && !isSecretPath(src) && !(await fs.lstat(src)).isSymbolicLink());
+      return src === ws.root || (isCommandSnapshotPath(path.relative(ws.root, src)) && !(await fs.lstat(src)).isSymbolicLink());
     },
   });
   for (const overlay of overlays) {
     signal.throwIfAborted();
+    if (!isCommandSnapshotPath(overlay.path)) continue;
     ws.resolve(overlay.path);
     const target = path.resolve(dir, overlay.path);
     if (!target.startsWith(dir + path.sep)) throw new Error('Snapshot path is outside the workspace');
-    if (isSecretPath(overlay.path) || overlay.path.split(/[\\/]/).some((part) => IGNORED_DIRS.has(part))) continue;
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, overlay.text);
   }

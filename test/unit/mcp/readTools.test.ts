@@ -64,6 +64,11 @@ describe('list_dir', () => {
 });
 
 describe('search_code', () => {
+  it('accepts Windows separators and dot segments in the search scope', async () => {
+    const out = await tool('search_code').run({ query: 'from_mapping', path: '.\\src\\app\\.\\config.py' });
+    expect(out).toContain('src/app/config.py:');
+  });
+
   it('shows context for a few hits', async () => {
     const out = await tool('search_code').run({ query: 'from_mapping' });
     expect(out.split('\n')[0]).toBe('"from_mapping" · 1 hit in 1 file');

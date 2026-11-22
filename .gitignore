@@ -60,3 +60,17 @@ vendor/
 *.orig
 *.rej
 *~
+
+# Local submission preparation and recording material
+/plans/
+/scratch/
+/tmp/
+/plan*.md
+/explanation*.md
+/anti-ai-slop-file.md
+/recordings/
+*.mp4
+*.mov
+*.webm
+# Keep linked documentation, README assets, and the submission PDF publishable.
+!docs/writeup.pdf

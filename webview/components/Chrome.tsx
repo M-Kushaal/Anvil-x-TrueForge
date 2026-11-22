@@ -42,7 +42,6 @@ export function EmptyState({ onPick }: { onPick: (text: string) => void }) {
         <kbd>Enter</kbd><span>Send · Shift+Enter for a new line</span>
         <kbd>Esc</kbd><span>Stop a running request</span>
       </div>
-      <div class="setup-hint">Start TrueForge with <code>npm run forge</code> and register models with <code>npm run setup</code> in the Anvil extension folder. Use the + beside the model to pin context files.</div>
     </div>
   );
 }

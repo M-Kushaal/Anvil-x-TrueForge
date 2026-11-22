@@ -1,12 +1,18 @@
 // Hosts the chat webview and relays messages between it and the controller.
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
-import type { ChatState, FromWebview, ToWebview } from '../shared/protocol';
+import type { ChatState, FromWebview, ToWebview, SidebarHistory } from '../shared/protocol';
 
 export class ChatView implements vscode.WebviewViewProvider {
   static readonly id = 'anvil.chat';
   private view: vscode.WebviewView | undefined;
   private last: ChatState | undefined;
+  private sidebar: SidebarHistory = { mode: 'chat', chats: [], inlineEdits: [] };
+
+  setSidebar(sidebar: SidebarHistory): void {
+    this.sidebar = sidebar;
+    if (this.last) this.post(this.last);
+  }
 
   constructor(private readonly extensionUri: vscode.Uri, private readonly onMessage: (message: FromWebview) => void) {}
 
@@ -23,7 +29,7 @@ export class ChatView implements vscode.WebviewViewProvider {
 
   post(state: ChatState): void {
     this.last = state;
-    const message: ToWebview = { type: 'state', state };
+    const message: ToWebview = { type: 'state', state: { ...state, sidebar: this.sidebar } };
     void this.view?.webview.postMessage(message);
   }
 }

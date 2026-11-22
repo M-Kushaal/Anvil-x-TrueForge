@@ -8,7 +8,7 @@ import { plural } from '../shared/text';
 
 export interface EditContext {
   generation?: () => number;
-  authorize?: (name: string, args: string) => void;
+  authorize?: (name: string, args: string, onStaged: () => void) => () => void;
   drafts: DraftStore;
   /** Real file text (live buffer or disk), or undefined if the file does not exist. */
   realText(path: string): Promise<string | undefined>;

@@ -5,15 +5,15 @@ describe('EditPermissions', () => {
   it('consumes only the exact approved edit, regardless of argument order', () => {
     const grants = new EditPermissions();
     grants.grant('propose_edit', '{"path":"x.ts","search":"old","replace":"new"}');
-    expect(grants.consume('propose_edit', { path: 'x.ts', search: 'old', replace: 'evil' })).toBe(false);
-    expect(grants.consume('propose_edit', { replace: 'new', search: 'old', path: 'x.ts' })).toBe(true);
-    expect(grants.consume('propose_edit', { path: 'x.ts', search: 'old', replace: 'new' })).toBe(false);
+    expect(grants.take('propose_edit', { path: 'x.ts', search: 'old', replace: 'evil' })).toBeUndefined();
+    expect(grants.take('propose_edit', { replace: 'new', search: 'old', path: 'x.ts' })).toEqual(expect.any(Function));
+    expect(grants.take('propose_edit', { path: 'x.ts', search: 'old', replace: 'new' })).toBeUndefined();
   });
   it('revokes grants when the active task stops', () => {
     const grants = new EditPermissions();
     grants.grant('create_file', { path: 'x.ts', content: 'new' });
     grants.revoke();
-    expect(grants.consume('create_file', { path: 'x.ts', content: 'new' })).toBe(false);
+    expect(grants.take('create_file', { path: 'x.ts', content: 'new' })).toBeUndefined();
   });
 });
 

@@ -14,11 +14,14 @@ export interface TurnOutcome {
   status: 'done' | 'error' | 'cancelled';
   message?: string;
   tokens?: number;
+  retryable?: false;
 }
 
 export interface TurnHandlers {
   /** Every event, with streamed deltas already merged into their base message. */
   onEvent(event: ForgeEvent): void;
+  onAbnormalExit?(): void;
+  onQuestion?(request: ApprovalRequest): Promise<string>;
   /** Called for each gated tool call; the turn stays paused until it resolves. */
   onApproval(request: ApprovalRequest): Promise<Decision>;
 }
@@ -27,9 +30,9 @@ export interface TurnHandlers {
 export interface ForgeApi {
   sessions: {
     create(request: object): Promise<{ data: { id: string } }>;
-    createTurnStream(sessionId: string, request: object): Promise<{ withMetadata(): AsyncIterable<{ data: unknown }> }>;
-    createTurnEvents(sessionId: string, turnId: string, request: object): Promise<unknown>;
-    cancel(sessionId: string): Promise<unknown>;
+    createTurnStream(sessionId: string, request: object, options?: { abortSignal: AbortSignal }): Promise<{ withMetadata(): AsyncIterable<{ data: unknown }> }>;
+    createTurnEvents(sessionId: string, turnId: string, request: object, options?: { timeoutInSeconds: number; maxRetries: number }): Promise<unknown>;
+    cancel(sessionId: string, options?: { timeoutInSeconds: number; maxRetries: number }): Promise<unknown>;
     update(sessionId: string, request: object): Promise<unknown>;
   };
 }
@@ -37,11 +40,12 @@ export interface ForgeApi {
 export const CONNECTOR_NAME = 'anvil-editor';
 
 export class ForgeClient {
-  constructor(private readonly api: ForgeApi, readonly baseUrl: string) {}
+  private readonly unconfirmed = new Set<string>();
+  constructor(private readonly api: ForgeApi, readonly baseUrl: string, private readonly onApprovalFailure?: () => void) {}
 
-  static connect(baseUrl: string): { client: ForgeClient; sdk: TrueForge } {
+  static connect(baseUrl: string, onApprovalFailure?: () => void): { client: ForgeClient; sdk: TrueForge } {
     const sdk = new TrueForge({ baseUrl, timeoutInSeconds: 900 });
-    return { client: new ForgeClient(sdk as unknown as ForgeApi, baseUrl), sdk };
+    return { client: new ForgeClient(sdk as unknown as ForgeApi, baseUrl, onApprovalFailure), sdk };
   }
 
   async createSession(spec: object): Promise<string> {
@@ -54,24 +58,42 @@ export class ForgeClient {
     await this.api.sessions.update(sessionId, { agent: { spec } });
   }
 
-  cancel(sessionId: string): Promise<unknown> {
-    return this.api.sessions.cancel(sessionId).catch(() => undefined);
+  cancel(sessionId: string): Promise<boolean> {
+    return this.api.sessions.cancel(sessionId, { timeoutInSeconds: 5, maxRetries: 0 }).then(
+      () => { this.unconfirmed.delete(sessionId); return true; },
+      () => { this.unconfirmed.add(sessionId); return false; },
+    );
   }
 
   sessionUrl(sessionId: string): string {
     return `${this.baseUrl.replace(/\/+$/, '')}/sessions/${sessionId}`;
   }
 
-  async runTurn({ sessionId, input, handlers, shouldStop }: {
+  async runTurn({ sessionId, input, handlers, shouldStop, signal }: {
     sessionId: string; input: object[]; handlers: TurnHandlers;
     /** Checked once the turn exists, so a Stop pressed while it was starting still cancels it. */
     shouldStop?: () => boolean;
+    signal?: AbortSignal;
   }): Promise<TurnOutcome> {
+    if (this.unconfirmed.has(sessionId) && !await this.cancel(sessionId)) {
+      return { status: 'error', message: 'TrueForge did not confirm cancellation of the previous turn.', retryable: false };
+    }
     const events = new Map<string, ForgeEvent>();
     let turnId: string | undefined;
     let outcome: TurnOutcome | undefined;
+    let failure: string | undefined;
+    let closed = false;
+    const streamAbort = new AbortController();
+    const active = () => !closed && !outcome && !failure && !signal?.aborted && !shouldStop?.();
+    let cancellation: Promise<boolean> | undefined;
+    const stopStream = () => {
+      cancellation ??= this.cancel(sessionId);
+      streamAbort.abort();
+    };
+    if (signal?.aborted) return { status: 'cancelled' };
+    signal?.addEventListener('abort', stopStream, { once: true });
     try {
-      const stream = await this.api.sessions.createTurnStream(sessionId, { input });
+      const stream = await this.api.sessions.createTurnStream(sessionId, { input }, { abortSignal: streamAbort.signal });
       for await (const { data } of stream.withMetadata()) {
         const event = data as ForgeEvent & { turnId?: string };
         if (isEventDelta(event as never)) {
@@ -84,26 +106,43 @@ export class ForgeClient {
         events.set(event.id, event);
         if (event.type === 'turn.created') {
           turnId = event.turnId;
-          if (shouldStop?.()) void this.cancel(sessionId);
+          if (shouldStop?.()) stopStream();
         }
-        if (event.type === 'tool.approval_required' && turnId) {
-          void this.resolveApprovals({ sessionId, turnId, event, events, handlers });
+        if ((event.type === 'tool.approval_required' || event.type === 'tool.response_required') && turnId) {
+          void this.resolveApprovals({ sessionId, turnId, event, events, handlers, active }).catch((error: unknown) => {
+            if (!active()) return;
+            failure = `Could not send tool approval to TrueForge: ${String(error)}`;
+            stopStream();
+          });
         }
-        if (event.type === 'turn.done') outcome = toOutcome(event);
         handlers.onEvent(event);
+        if (event.type === 'turn.done') {
+          outcome = toOutcome(event);
+          break;
+        }
       }
     } catch (error) {
-      // The stream broke but the turn may still run on the server: cancel it so a retry never runs
-      // alongside it.
-      if (turnId && !outcome) void this.cancel(sessionId);
-      return { status: 'error', message: error instanceof Error ? error.message : String(error) };
+      failure ??= error instanceof Error ? error.message : String(error);
+    } finally {
+      closed = true;
+      signal?.removeEventListener('abort', stopStream);
     }
-    return outcome ?? { status: 'error', message: 'The stream ended without a result.' };
+    if (signal?.aborted || shouldStop?.()) {
+      await cancellation;
+      return { status: 'cancelled' };
+    }
+    if (outcome && !failure) return outcome;
+    const cleanup = handlers.onAbnormalExit ?? this.onApprovalFailure;
+    cleanup?.();
+    const confirmed = await (cancellation ?? this.cancel(sessionId));
+    const message = failure ?? 'The stream ended without a result.';
+    if (!confirmed) return { status: 'error', message: `${message} TrueForge did not confirm cancellation.`, retryable: false };
+    return cancellation || !turnId ? { status: 'error', message, retryable: false } : { status: 'error', message };
   }
 
   /** Each decision is posted into the paused turn as soon as the user makes it. */
-  private async resolveApprovals({ sessionId, turnId, event, events, handlers }: {
-    sessionId: string; turnId: string; event: ForgeEvent; events: Map<string, ForgeEvent>; handlers: TurnHandlers;
+  private async resolveApprovals({ sessionId, turnId, event, events, handlers, active }: {
+    sessionId: string; turnId: string; event: ForgeEvent; events: Map<string, ForgeEvent>; handlers: TurnHandlers; active: () => boolean;
   }): Promise<void> {
     const refs = Array.isArray(event.toolCalls) ? (event.toolCalls as Array<{ id: string; sourceEventId: string }>) : [];
     const threadId = event.threadId ?? 'main';
@@ -111,11 +150,18 @@ export class ForgeClient {
       const source = events.get(ref.sourceEventId);
       const call = (Array.isArray(source?.toolCalls) ? source.toolCalls : []).find((c: { id: string }) => c.id === ref.id);
       const { name, args } = call ? describeCall(call) : { name: 'tool', args: '{}' };
+      if (event.type === 'tool.response_required') {
+        const content = handlers.onQuestion ? await handlers.onQuestion({ toolCallId: ref.id, threadId, name, args }) : 'The client cannot answer this question.';
+        if (!active()) return;
+        await this.api.sessions.createTurnEvents(sessionId, turnId, { events: [{ type: 'user.tool_response', threadId, toolCallId: ref.id, content }] }, { timeoutInSeconds: 10, maxRetries: 0 });
+        return;
+      }
       const decision = await handlers.onApproval({ toolCallId: ref.id, threadId, name, args })
         .catch((): Decision => ({ status: 'deny', reason: 'Review was closed.' }));
-      await this.api.sessions
-        .createTurnEvents(sessionId, turnId, { events: [{ type: 'user.tool_approval', threadId, toolCallId: ref.id, approval: decision }] })
-        .catch(() => undefined); // the turn may already be cancelled
+      if (!active()) return;
+      await this.api.sessions.createTurnEvents(sessionId, turnId, {
+        events: [{ type: 'user.tool_approval', threadId, toolCallId: ref.id, approval: decision }],
+      }, { timeoutInSeconds: 10, maxRetries: 0 });
     }));
   }
 }

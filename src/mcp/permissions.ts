@@ -24,14 +24,24 @@ export class CommandPermissions {
 }
 
 export class EditPermissions {
-  private grants = new Set<string>();
+  private grants = new Map<string, () => void>();
   private key(name: string, args: unknown): string {
     const value = (typeof args === 'string' ? JSON.parse(args) : args) as Record<string, unknown>;
     return JSON.stringify([name, Object.keys(value).sort().map((key) => [key, value[key]])]);
   }
-  grant(name: string, args: unknown): void { this.grants.add(this.key(name, args)); }
-  consume(name: string, args: unknown): boolean {
-    try { const key = this.key(name, args); const allowed = this.grants.has(key); this.grants.delete(key); return allowed; } catch { return false; }
+  grant(name: string, args: unknown, onStaged: () => void = () => {}): () => void {
+    const key = this.key(name, args);
+    const grant = () => onStaged();
+    this.grants.set(key, grant);
+    return () => { if (this.grants.get(key) === grant) this.grants.delete(key); };
+  }
+  take(name: string, args: unknown): (() => void) | undefined {
+    try {
+      const key = this.key(name, args);
+      const onStaged = this.grants.get(key);
+      this.grants.delete(key);
+      return onStaged;
+    } catch { return undefined; }
   }
   revoke(): void { this.grants.clear(); }
 }

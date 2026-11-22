@@ -4,7 +4,7 @@
 // staged edit). Pending hunks are diff(base, proposed). Keep writes a hunk into the real file and
 // folds it into `base`; Undo removes it from `proposed`. The agent reads `proposed`, so later
 // edits build on earlier ones.
-import { applyHunks, diffHunks, mapLine, splitLines, joinLines, stats, type Hunk } from './hunks';
+import { applyHunks, diffHunks, splitLines, stats, type Hunk } from './hunks';
 import { locate } from './locate';
 import type { FileChange } from '../shared/protocol';
 
@@ -29,7 +29,7 @@ export type StageResult =
   | { ok: false; error: string };
 
 /** Outcome of planning a keep: the new real-file text, to be written by the caller. */
-export type KeepPlan = { ok: true; text: string; commit: () => void } | { ok: false; error: string };
+export type KeepPlan = { ok: true; text: string; baseBefore: string; baseAfter: string; commit: () => void } | { ok: false; error: string };
 
 export class DraftStore {
   private drafts = new Map<string, Draft>();
@@ -84,7 +84,11 @@ export class DraftStore {
 
   pending(path: string): Hunk[] {
     const draft = this.drafts.get(path);
-    return draft ? diffHunks(draft.base, draft.proposed) : [];
+    if (!draft) return [];
+    if (draft.isNew && draft.base === '' && draft.proposed === '') {
+      return [{ id: 'create-empty', oldStart: 0, newStart: 0, oldLines: [], newLines: [] }];
+    }
+    return diffHunks(draft.base, draft.proposed);
   }
 
   /** What the agent should see for `path`, if a draft exists. */
@@ -114,7 +118,7 @@ export class DraftStore {
     const proposed = content.replace(/\r\n/g, '\n');
     this.drafts.set(path, { path, base: '', proposed, isNew: true, model });
     this.emit();
-    return { ok: true, added: splitLines(proposed).length, removed: 0, pending: 1, firstLine: 1 };
+    return { ok: true, added: proposed === '' ? 0 : splitLines(proposed).length, removed: 0, pending: 1, firstLine: 1 };
   }
 
   /** Plans writing the given hunks into `real`. Call `commit()` after the write succeeds. */
@@ -124,26 +128,48 @@ export class DraftStore {
     const chosen = this.pending(path).filter((h) => hunkIds === 'all' || hunkIds.includes(h.id));
     if (chosen.length === 0) return { ok: false, error: 'That change is no longer pending.' };
 
-    let text = real;
-    // Bottom-up so positions computed against `real` stay valid.
-    for (const hunk of [...chosen].sort((a, b) => b.oldStart - a.oldStart)) {
-      const placed = placeHunk(draft.base, text, hunk);
-      if (placed === undefined) return { ok: false, error: `${path} changed since this edit was proposed; the original lines are gone. Ask Anvil to redo it.` };
-      const lines = splitLines(text);
-      lines.splice(placed, hunk.oldLines.length, ...hunk.newLines);
-      text = joinLines(lines);
+    const intervening = diffHunks(draft.base, real);
+    const baseLines = splitLines(draft.base);
+    const conflict: KeepPlan = { ok: false, error: `${path} changed near the proposed edit. Ask Anvil to redo it.` };
+    const realLines = intervening.length ? splitLines(real) : baseLines;
+    const mapped: Hunk[] = [];
+    for (const hunk of chosen) {
+      const start = Math.max(0, hunk.oldStart - 1);
+      const end = Math.min(baseLines.length, hunk.oldStart + hunk.oldLines.length + 1);
+      const anchors = baseLines.slice(start, end);
+      // A line diff can align the wrong copy of a repeated block after one copy is removed.
+      if (intervening.length && baseLines.some((line, i) => i !== start && line === anchors[0]
+        && anchors.every((anchor, j) => baseLines[i + j] === anchor))) {
+        return conflict;
+      }
+      let offset = 0;
+      for (const change of intervening) {
+        const changeEnd = change.oldStart + change.oldLines.length;
+        const sameInsertion = hunk.oldLines.length === 0 && change.oldStart === hunk.oldStart;
+        if (sameInsertion || (changeEnd > start && change.oldStart < end)) return conflict;
+        if (changeEnd <= start) offset += change.newLines.length - change.oldLines.length;
+      }
+      const mappedStart = start + offset;
+      if (intervening.length && (!anchors.every((anchor, j) => realLines[mappedStart + j] === anchor)
+        || realLines.some((line, i) => i !== mappedStart && line === anchors[0]
+          && anchors.every((anchor, j) => realLines[i + j] === anchor)))) return conflict;
+      mapped.push({ ...hunk, oldStart: hunk.oldStart + offset });
     }
+    const text = applyHunks(real, mapped);
     const base = draft.base;
     const kept = chosen.map((h) => ({ ...h, oldLines: [...h.oldLines], newLines: [...h.newLines] }));
+    const baseAfter = applyHunks(base, kept);
     let committed = false;
     return {
       ok: true,
       text,
+      baseBefore: base,
+      baseAfter,
       commit: () => {
         if (committed) return;
         if (this.drafts.get(path) !== draft || draft.base !== base) throw new Error(`${path} changed while Keep was in progress.`);
         committed = true;
-        draft.base = applyHunks(base, kept);
+        draft.base = baseAfter;
         draft.isNew = false;
         this.settle(path);
       },
@@ -156,7 +182,9 @@ export class DraftStore {
     const draft = this.drafts.get(path);
     if (!draft) return true;
     const pending = this.pending(path);
-    draft.proposed = applyHunks(draft.base, pending, (h) => hunkIds !== 'all' && !hunkIds.includes(h.id));
+    const remaining = pending.filter((h) => hunkIds !== 'all' && !hunkIds.includes(h.id));
+    if (draft.isNew && remaining.length === 0) this.drafts.delete(path);
+    else draft.proposed = applyHunks(draft.base, remaining);
     this.settle(path);
     return true;
   }
@@ -172,7 +200,10 @@ export class DraftStore {
   reopen({ path, before, after, model, isNew = false }: { path: string; before: string; after: string; model: string; isNew?: boolean }): void {
     if (this.isLocked(path)) throw new Error(`${path} is being applied. Wait for Keep to finish.`);
     const draft = this.drafts.get(path);
-    if (draft) draft.base = before;
+    if (draft) {
+      draft.base = before;
+      draft.isNew = isNew;
+    }
     else this.drafts.set(path, { path, base: before, proposed: after, isNew, model });
     this.settle(path);
   }
@@ -202,7 +233,7 @@ export class DraftStore {
 
   private settle(path: string): void {
     const draft = this.drafts.get(path);
-    if (draft && draft.base === draft.proposed) this.drafts.delete(path);
+    if (draft && !draft.isNew && draft.base === draft.proposed) this.drafts.delete(path);
     this.emit();
   }
 
@@ -210,15 +241,4 @@ export class DraftStore {
     this.version++;
     for (const listener of this.listeners) listener();
   }
-}
-
-/** Line index in `real` where `hunk` (computed against `base`) applies, or undefined if its lines are gone. */
-function placeHunk(base: string, real: string, hunk: Hunk): number | undefined {
-  const lines = splitLines(real);
-  const matches = (at: number) => at >= 0 && at + hunk.oldLines.length <= lines.length && hunk.oldLines.every((l, i) => lines[at + i] === l);
-  const expected = base === real ? hunk.oldStart : mapLine(base, real, hunk.oldStart);
-  if (matches(expected)) return expected;
-  if (hunk.oldLines.length === 0) return expected; // pure insertion: trust the mapped position
-  const candidates = lines.map((_, i) => i).filter(matches);
-  return candidates.length === 1 ? candidates[0] : undefined;
 }

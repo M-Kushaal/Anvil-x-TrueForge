@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyHunks, diffHunks, mapLine } from '../../../src/drafts/hunks';
+import { applyHunks, diffHunks } from '../../../src/drafts/hunks';
 
 /** Deterministic pseudo-random generator so failures are reproducible. */
 function rng(seed: number) {
@@ -46,12 +46,5 @@ describe('diffHunks / applyHunks', () => {
       // And the remaining diff is exactly the hunks we skipped.
       expect(diffHunks(partial, after).length).toBe(hunks.length - keep.size);
     }
-  });
-});
-
-describe('mapLine', () => {
-  it('follows lines shifted by edits above them', () => {
-    expect(mapLine('a\nb\nc', 'x\ny\na\nb\nc', 2)).toBe(4);
-    expect(mapLine('a\nb\nc', 'b\nc', 2)).toBe(1);
   });
 });

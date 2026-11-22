@@ -36,7 +36,7 @@ VS Code ─ Anvil extension ─────────────────�
 - **Harness features used:** tool approval (above), session update for in-place fallback, compaction
   (60k tokens; 6k for lean providers), and in the standard spec dynamic subagents (shown as threads) and
   deferred tool loading. Lean providers get subagents off and all tools preloaded instead.
-- **One connector per workspace** (`anvil-editor-<hash>`), so two VS Code windows never route each
+- **One connector per extension host** (`anvil-editor-<uuid>`), so two VS Code windows never route each
   other's tool calls.
 - **Model relay.** TrueForge replays a reasoning model's `reasoning_content`, which Groq's OpenAI-compatible
   endpoint rejects. [`scripts/model-relay.ts`](../scripts/model-relay.ts) (≈30 lines, started by `npm run forge`)

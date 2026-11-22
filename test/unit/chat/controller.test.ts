@@ -12,13 +12,13 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function setup(turns: Step[][], options: { chain?: string[] } = {}) {
+function setup(turns: Step[][], options: { chain?: string[]; onApprovalFailure?: () => void } = {}) {
   const fake = fakeForge(...turns);
   const states: ChatState[] = [];
   const sleeps: number[] = [];
   let clock = 0;
   const controller = new ChatController({
-    client: new ForgeClient(fake.api, 'http://localhost:8790'),
+    client: new ForgeClient(fake.api, 'http://localhost:8790', options.onApprovalFailure),
     models: () => options.chain ?? ['groq/gpt-oss-120b'],
     post: (s) => states.push(s),
     onApproval: async () => ({ status: 'allow' }),
@@ -57,11 +57,73 @@ describe('ChatController', () => {
       { type: 'turn.created', id: 't', turnId: 'turn1' },
       { type: 'model.message', id: 'm1', threadId: 'main', toolCalls: [call] },
       { type: 'tool.approval_required', id: 'a', threadId: 'main', toolCalls: [{ id: 'c1', sourceEventId: 'm1' }] },
+      'waitForApproval',
       done,
     ]]);
     await controller.send('edit');
     await vi.waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0]).toEqual({ events: [{ type: 'user.tool_approval', threadId: 'main', toolCallId: 'c1', approval: { status: 'allow' } }] });
+  });
+
+  it('terminates a paused turn when submitting an approval fails', async () => {
+    const onApprovalFailure = vi.fn();
+    const { controller, api, last } = setup([[
+      { type: 'turn.created', id: 't', turnId: 'turn1' },
+      { type: 'tool.approval_required', id: 'a', toolCalls: [{ id: 'c1', sourceEventId: 'm' }] },
+      'hang',
+    ]], { onApprovalFailure });
+    vi.mocked(api.sessions.createTurnEvents).mockRejectedValueOnce(new Error('connection reset'));
+    await controller.send('edit');
+    expect(onApprovalFailure).toHaveBeenCalledOnce();
+    expect(api.sessions.cancel).toHaveBeenCalledOnce();
+    expect(api.sessions.createTurnStream).toHaveBeenCalledOnce();
+    expect(last().running).toBe(false);
+    expect(last().items.at(-1)).toMatchObject({ detail: expect.stringContaining('Could not send tool approval') });
+  });
+
+  it('aborts the local stream even if TrueForge cannot confirm Stop', async () => {
+    const { controller, api, last } = setup([[]]);
+    vi.mocked(api.sessions.cancel).mockRejectedValue(new Error('offline'));
+    vi.mocked(api.sessions.createTurnStream).mockImplementation(async (_session, _request, options) => ({
+      async *withMetadata() {
+        await new Promise<void>((resolve) => {
+          if (options?.abortSignal.aborted) resolve();
+          else options?.abortSignal.addEventListener('abort', () => resolve(), { once: true });
+        });
+      },
+    }));
+    const sending = controller.send('hi');
+    await vi.waitFor(() => expect(api.sessions.createTurnStream).toHaveBeenCalledOnce());
+    controller.stop();
+    await sending;
+    expect(last().running).toBe(false);
+    expect(last().items.at(-1)).toMatchObject({ title: 'Stopped' });
+    await controller.send('try again');
+    expect(api.sessions.createTurnStream).toHaveBeenCalledOnce();
+  });
+
+  it('bounds retries even when each failed turn streams partial output', async () => {
+    const { controller, api, last } = setup([[
+      { type: 'model.message', id: 'm', content: 'Partial output' },
+      failed('429 rate limited'),
+    ]]);
+    await controller.send('task');
+    expect(api.sessions.createTurnStream).toHaveBeenCalledTimes(24);
+    expect(last().items.at(-1)).toMatchObject({ title: 'Retry limit reached' });
+  });
+
+  it('waits for a resumed session spec update before sending', async () => {
+    const { controller, api } = setup([[done]]);
+    const update = deferred<void>();
+    vi.mocked(api.sessions.update).mockReturnValueOnce(update.promise);
+    controller.resume({ sessionId: 'saved', title: 'Saved chat', items: [] });
+    const sending = controller.send('continue');
+    await vi.waitFor(() => expect(api.sessions.update).toHaveBeenCalledOnce());
+    expect(api.sessions.createTurnStream).not.toHaveBeenCalled();
+    update.resolve();
+    await sending;
+    expect(api.sessions.createTurnStream).toHaveBeenCalledOnce();
+    expect(api.sessions.create).not.toHaveBeenCalled();
   });
 
   it('stops a streaming turn and says no files were written', async () => {
@@ -70,7 +132,7 @@ describe('ChatController', () => {
     await vi.waitFor(() => expect(api.sessions.createTurnStream).toHaveBeenCalled());
     controller.stop();
     await running;
-    expect(api.sessions.cancel).toHaveBeenCalledWith('s1');
+    expect(api.sessions.cancel).toHaveBeenCalledWith('s1', expect.objectContaining({ timeoutInSeconds: 5 }));
     expect(last().items.at(-1)).toMatchObject({ kind: 'notice', title: 'Stopped' });
     expect(last().items.at(-1)).not.toHaveProperty('detail'); // nothing pending: nothing more to say
     expect(last().running).toBe(false);
@@ -127,7 +189,7 @@ describe('ChatController', () => {
     created.resolve({ data: { id: 'abandoned' } });
     await pending;
     expect(controller.currentSession).toBe(action === 'resume' ? 'resumed' : undefined);
-    expect(api.sessions.cancel).toHaveBeenCalledWith('abandoned');
+    expect(api.sessions.cancel).toHaveBeenCalledWith('abandoned', expect.objectContaining({ timeoutInSeconds: 5 }));
     expect(api.sessions.createTurnStream).not.toHaveBeenCalled();
     expect(controller.snapshot.running).toBe(false);
   });

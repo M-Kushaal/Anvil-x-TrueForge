@@ -85,6 +85,46 @@ describe('DraftStore', () => {
     expect(plan).toMatchObject({ ok: false });
   });
 
+  it('does not relocate a hunk to another function when the original target changed', () => {
+    const store = new DraftStore();
+    const base = 'def first():\n    return 1\n\ndef second():\n    return 1\n';
+    store.stage({ path: 'file.py', search: 'def first():\n    return 1', replace: 'def first():\n    return 2', model }, base);
+    const edited = base.replace('return 1', 'return 3');
+    expect(store.planKeep('file.py', 'all', edited)).toMatchObject({ ok: false });
+    expect(store.pending('file.py')).toHaveLength(1);
+  });
+
+  it('rejects a hunk when an intervening edit creates a second matching block', () => {
+    const store = new DraftStore();
+    const base = 'pre\nA\ntarget\nB\npost\n';
+    store.stage({ path: 'file.py', search: 'target', replace: 'reviewed', model }, base);
+    expect(store.planKeep('file.py', 'all', 'pre\nA\ntarget\nB\nA\ntarget\nB\npost\n')).toMatchObject({ ok: false });
+  });
+
+  it('rejects a pure insertion when its anchor disappears', () => {
+    const store = new DraftStore();
+    const base = 'before\nanchor\nafter';
+    store.stage({ path: 'file.py', search: 'anchor', replace: 'anchor\ninserted', model }, base);
+    expect(store.planKeep('file.py', 'all', 'before\nafter')).toMatchObject({ ok: false });
+  });
+
+  it('keeps, reopens and rejects an empty-file creation', () => {
+    const store = new DraftStore();
+    const path = 'empty.py';
+    expect(store.createFile({ path, content: '', exists: false, model })).toMatchObject({ ok: true, added: 0, pending: 1 });
+    expect(store.summary()).toEqual([{ path, isNew: true, hunks: 1, added: 0, removed: 0 }]);
+    const [hunk] = store.pending(path);
+    const plan = store.planKeep(path, [hunk!.id], '');
+    if (!plan.ok) throw new Error(plan.error);
+    expect(plan.text).toBe('');
+    plan.commit();
+    expect(store.get(path)).toBeUndefined();
+    store.reopen({ path, before: '', after: '', model, isNew: true });
+    expect(store.pending(path)).toHaveLength(1);
+    expect(store.undo(path, [hunk!.id])).toBe(true);
+    expect(store.get(path)).toBeUndefined();
+  });
+
   it('creates new files as a single pending hunk and refuses existing paths', () => {
     const store = new DraftStore();
     expect(store.createFile({ path: 'new.py', content: 'x = 1\n', exists: false, model })).toMatchObject({ ok: true });

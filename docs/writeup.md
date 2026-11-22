@@ -1,94 +1,79 @@
-# Anvil: a coding agent that shows its work, on TrueForge
+# Anvil on TrueForge
+
+TrueFoundry Forge-a-thon · Techfest IIT Bombay 2026–27
 
 ## 1. Team
-Matam Kushaal (IIT Bombay, GitHub `M-Kushaal`) · Manit Jhanjharia (IIT Bombay, GitHub TBD)
+
+| Member | College | GitHub |
+|---|---|---|
+| Matam Kushaal | IIT Bombay | [@M-Kushaal](https://github.com/M-Kushaal) |
+| Manit Jhanjharia | IIT Bombay | [@Osama-Bin-Lagging](https://github.com/Osama-Bin-Lagging) |
 
 ## 2. Starting point
-From scratch. No upstream fork; libraries only (TrueForge SDK, MCP SDK, Preact, jsdiff, marked, DOMPurify, zod,
-Codicons). Graphify (Apache-2.0) runs as an external offline tool. Repository: https://github.com/M-Kushaal/Anvil-x-TrueForge.
+
+**We built Anvil from scratch.**
+
+Anvil is an original VS Code extension released under the MIT license. It uses TrueForge to run the coding agent. We use Flask 3.1.3 (commit `22d92470`) for the demo and to check how well Anvil finds relevant code. [Anvil source repository](https://github.com/M-Kushaal/Anvil-x-TrueForge)
 
 ## 3. Architecture on TrueForge
-The extension is a TrueForge client: it creates sessions and streams turns with `@truefoundry/trueforge-sdk`,
-renders every event (deltas merged, about 30 updates a second) and never calls a model provider. Editor
-capabilities are an MCP server inside the extension (`127.0.0.1`, random port, bearer token), registered as a
-connector named per workspace: `read_file`, `search_code`, `outline`, `find_symbol`, `related_files`, `list_dir`,
-`propose_edit`, `create_file`, `run_command`, `update_plan`. The agent, not the extension, decides what to read
-and change.
 
-Harness features and why:
-- **Tool approval drives the diff review.** `propose_edit`, `create_file`, `run_command` require approval.
-  TrueForge keeps the turn open on `tool.approval_required`; Anvil validates the call (unique exact match,
-  file exists, inside the selection for inline edits) and posts allow, or a deny with a fixable reason, via
-  `createTurnEvents`. Allowed edits are staged in a draft layer; only the user's Keep writes to disk. Commands
-  run on a copy of the workspace; once edits are staged, every command needs the user's OK.
-- **Session update** (`sessions.update`) swaps the model in place on fallback, so the conversation continues.
-- **Compaction**, configurable (`anvil.compactAt`), and lower for small-limit models.
-- **Deferred tool loading and dynamic subagents** in the standard spec. For providers with small per-request
-  limits (`anvil.leanProviders`, e.g. Groq's free tier) Anvil sends a lean spec instead: subagents and
-  ask-user off, all tools preloaded, short output. Discovering tools cost a step after every compaction there.
-- **Sessions as history.** Chats are saved per workspace and reopen on their TrueForge session; inline edits
-  are turns in one shared session (renewed every few edits), listed in the History view.
+Anvil uses the TrueForge SDK to start conversations and show the model's responses and tool activity as they arrive. TrueForge 0.185.0 runs on the user's machine and connects to the chosen model provider. An authenticated local MCP connection lets the agent use the editor tools below.
 
-Findings from the integration: TrueForge's SSRF guard blocks loopback MCP servers (we start it with
-`OUTBOUND_URL_ALLOWED_HOSTS=["127.0.0.1"]` only); OpenAI-compatible endpoints (Groq, Cerebras) reject the
-`reasoning_content` TrueForge replays for reasoning models, so a 30-line local relay strips it (a candidate
-Round-2 PR); and compaction is triggered by the previous call's size, so one large tool result can overshoot a
-small request limit. Anvil then continues in a fresh session carrying the task, plan and staged files.
+| Editor capability | MCP tools |
+|---|---|
+| Read and navigate | `read_file`, `list_dir`, `search_code`, `outline`, `find_symbol`, `related_files` |
+| Stage edits and verify | `propose_edit`, `create_file`, `run_command` |
+| Show progress | `update_plan` |
+
+Anvil checks proposed edits before showing them for review. The user chooses **Keep** or **Reject** for each change. Commands require approval and run on a temporary copy that includes pending edits, so users can check a change before applying it. **Stop** interrupts the response and asks TrueForge to cancel the run.
+
+Users can switch models without leaving the conversation using `/model`, inspect reported token counts with `/usage`, and undo the latest accepted edit request with `/rewind`. Rewind asks for confirmation and restores all files changed by that request. Repeating it steps back through earlier requests in the current extension session. Ctrl+I sends the selected filename and lines to the sidebar for an inline edit, then returns to the previous chat.
+
+TrueForge shortens older conversation history through compaction. Standard sessions load tools when needed and can delegate work to subagents. Lean sessions load tools upfront and disable subagents to keep smaller requests simple. When the agent needs an answer, Anvil shows clickable choices and a text box.
 
 ## 4. How context is selected
-One file per role (implementation, test, docs), ranked by keyword, code-graph and existing-pattern signals,
-sent as a pack of outlines and line-numbered snippets under a token budget (default 3k); the agent reads more
-through tools whose outputs are capped (100-line reads, ≤50 search hits) and start with a one-line summary.
-Signals: BM25 per field (path, symbols, body; body log-damped), Graphify file graph (calls, imports,
-inheritance; 1 hop; PageRank), existing pattern (for "add a new X command": files defining `*_command`, with
-the closest one shown and the lines that register it), identifiers named in the request, test/doc pairing,
-and a penalty for files matching only the subject words ("config" in Task B pulls toward `config.py` and
-`docs/config.rst`; both are listed as not included, with reasons). To fit the budget, snippets shrink, then
-extras drop; at the smallest level only file headers, reasons and the task remain. `@file` and `@symbol`
-mentions come first (a symbol from its own definition). Greetings get no pack. The chat's Context card shows
-each chosen file, its reasons and token cost, and what was left out.
-Measured on Flask 3.1.3, 8 tasks with known targets: recall@1 18/18 (without the graph 17/18). The heuristics
-were tuned on these tasks, so treat this as a regression check, not a general benchmark.
+
+Anvil searches file paths, code symbols and text using BM25, a keyword-ranking method. When available, Graphify links help it find related code. It also looks for matching tests and documentation. Files and symbols named with `@file` or `@symbol` take priority.
+
+The first context pack includes one file for each needed role, with outlines and line-numbered excerpts. Its default budget is about **3,000 tokens**, with a smaller budget for lean models. Anvil shortens excerpts before dropping optional material. The Context card shows which files were chosen, why they were chosen and their estimated token use. The agent can read more through MCP when needed.
+
+In eight local Flask checks with Graphify, Anvil's top-ranked results found the expected files in **8/8 implementation, 6/6 test and 4/4 documentation** cases. We used these same tasks to improve retrieval, so these results are development checks rather than an independent evaluation.
 
 ## 5. Model setup
-| Model | Where it ran | Cost |
-|---|---|---|
-| `gpt-oss-120b`, `gpt-oss-20b` | Groq cloud, free tier, two accounts (`groq`, `groq-2`), via the local relay | ₹0 |
-| `gpt-oss-120b` | Cerebras cloud, free trial credits, via the local relay | ₹0 |
-| `qwen2.5:3b` | Ollama on a laptop CPU (offline fallback) | ₹0 |
 
-Anthropic (Claude Haiku) is supported by `npm run setup` when a key is set, but was not used. Switch models by
-adding a provider in TrueForge and listing it in `anvil.models`; Anvil sets each session's model from that list.
-TrueForge itself runs locally, pinned to 0.185.0 (the version Anvil was tested against). Failures are classified (auth, missing model,
-rate limit with retry-after, oversized request, network, timeout, server, malformed tool call, editor tools
-unreachable); Anvil waits out short rate limits, uses whichever account serving the same model frees up first,
-backs off on network errors, and falls back to the next model automatically (skipping models on a provider
-whose key was rejected). Free tiers and a laptop CPU during development.
+| Model | Where it ran | Approximate cost |
+|---|---|---|
+| GPT-OSS 120B / 20B | Groq cloud through a local relay | INR 0 on development free tier |
+| GPT-OSS 120B, default | Cerebras cloud through a local relay | INR 0 using development trial credits |
+| Claude Haiku 5.5 | Anthropic API; used during demo rehearsal | Approximately US$0.05 total |
+| Qwen 2.5 3B | Ollama on a laptop CPU | INR 0 in API charges |
+
+`npm run setup` registers the model providers and agent. Users choose a model with `/model` or the model picker beside the message box. The `anvil.models` setting lists backup models in order, and `anvil.allowModelFallback` enables automatic switching. Chat and inline edits retry recoverable failures, with a maximum of 24 attempts per run. The zero-cost entries above reflect development free tiers and trial credits.
 
 ## 6. Scorecard
-| Criterion | Video | Claim |
+
+[Demo video](<https://drive.google.com/file/d/1HM96QAkTnalrMM1jFUjyX8wES2yMvt6L/view?usp=sharing>) ? **Runtime 3:53**, within the four-minute limit.
+
+Timestamps mark task starts supplied for the final video. Related judging criteria refer to the segment containing their demonstration. Task A starts at 0:00, Task B at 0:46, and Task C at 2:06.
+
+| Judging criterion | Video timestamp | One-line claim |
 |---|---|---|
-| A1 Inline edit | TBD | Diff with Keep/Reject per change; edits limited to the selection (±2 lines) |
-| A2 Agent mode | TBD | Task B: implementation, test and docs found without being named (to be shown live) |
-| A3 Streaming and cancellation | TBD | Events stream; Stop cancels the turn, cuts waits short and kills commands; 0 files written |
-| B1 Context assembly | TBD | Budgeted pack, reasons and left-out files shown; @-mentions; recall@1 18/18 |
-| B2 Diff safety | TBD | Pending edits, per-change Keep/Reject, Revert Last Kept Change, commands on a copy |
-| B3 Resilience | TBD | Invalid key → automatic switch to the next model; git status clean |
-| B4 TrueForge depth | TBD | MCP tools, approval-driven review, session update, compaction, lean vs. standard spec |
-| C1 Video | TBD | Tasks A, B, C in order, each verified on screen; TrueForge session shown during Task B |
-| C2 Write-up | — | This document: eight sections, scorecard with timestamps, models and costs declared |
+| A1 · Inline edit | 0:00 | Task A stages the selected Flask edit for individual hunk review. |
+| A2 · Agent mode | 0:46 | Task B discovers the CLI implementation, tests and docs from an unattached prompt. |
+| A3 · Streaming and cancellation | 0:00; 2:06 | Model and tool activity streams in the sidebar, and Stop interrupts the turn. |
+| B1 · Context assembly | 0:46 | The Context card shows selected files, reasons and the estimated token budget. |
+| B2 · Diff safety | 0:00; 0:46 | Per-hunk Keep/Reject and confirmed operation-level rewind control file changes. |
+| B3 · Resilience | 2:06 | An unreachable selected provider produces a clear error while the workspace remains unchanged. |
+| B4 · TrueForge depth | 0:46 | The matching Task B session shows streamed turns and approval-gated MCP calls. |
+| C1 · Video | 0:00; 0:46; 2:06 | Tasks A, B and C are presented in order with on-screen verification. |
+| C2 · Write-up | PDF | This document covers architecture, retrieval, models, costs and limitations. |
 
 ## 7. Tools used
-Claude Code (Claude) and OpenAI Codex for implementation, documentation, and code review. Graphify (offline code graph). Vitest,
-@vscode/test-electron. README images: SVG branding and UI previews rendered from application components with example data.
 
-## 8. Known limitations and next month
-- Free tiers are too small for long agent runs (Groq: 8k tokens per request; Cerebras trial: a few requests
-  a minute). Task B needs a paid tier or a larger-context provider.
-- Retrieval picks one file per role; refactors across several implementation files rely on the agent's reads.
-- The MCP server trusts any call that reaches it with the token; approval is enforced in the session spec.
-- `run_command` runs a copy of the workspace with the user's permissions (secrets left out); it is not a
-  sandbox. Its `PYTHONPATH` setup targets `src/`-layout Python projects.
-- The local fallback model is slow on CPU and weak with tools.
-Next: contribute reasoning-replay handling for OpenAI-compatible providers to TrueForge; @-mention
-autocomplete; a checkpoint per turn; streaming command output; per-call approval tokens in the MCP server.
+Claude Code and OpenAI Codex assisted with implementation, documentation and review. Graphify built the offline code graph. Vitest and VS Code’s test runner support verification. README previews were rendered from Anvil’s UI components using example data.
+
+## 8. Known limitations and what you would do with another month
+
+The first context pack includes only one file per role, so larger changes need extra reads. Provider quotas can interrupt long runs, and the local CPU model is slow when a task needs many tool calls. Verification commands require approval and run in a temporary copy, but still have the user's machine permissions. Undo history is lost when the extension restarts. Token counts depend on what TrueForge reports and may be missing from older conversations. Retries can also make a run take longer, up to the overall attempt limit.
+
+With another month, we would include more implementation files in the first context pack and test retrieval on repositories we did not use during development. We would also give verification commands a stronger isolation boundary, show their output as it arrives, and contribute a TrueForge fix for replaying reasoning messages with OpenAI-compatible providers.

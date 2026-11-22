@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { ForgeClient } from '../../../src/forge/client';
 import { DraftStore } from '../../../src/drafts/store';
 import type { EditContext } from '../../../src/mcp/editTools';
-import { startInlineEdit } from '../../../src/inline/run';
+import { startInlineEdit, withFallback } from '../../../src/inline/run';
 import { fakeForge } from '../../support/fakeForge';
 
 const text = 'def f():\n    return 1\n\n\ndef g():\n    return 2\n';
 
-function setup(script: Array<object | 'hang'>) {
+function setup(script: Parameters<typeof fakeForge>[number]) {
   const { api, posted, created } = fakeForge(script);
   const drafts = new DraftStore();
   const edits: EditContext = { drafts, realText: async () => text, model: () => 'm' };
@@ -48,12 +48,34 @@ describe('inline edit run', () => {
       { type: 'turn.created', id: 't', turnId: 'tu1' },
       { type: 'model.message', id: 'm1', toolCalls: [call({ path: 'a.py', search: '    return 2', replace: '    return 20' })] },
       { type: 'tool.approval_required', id: 'a', threadId: 'main', toolCalls: [{ id: 'c1', sourceEventId: 'm1' }] },
+      'waitForApproval',
       { type: 'turn.done', id: 'd', state: { status: 'done' } },
     ]);
     await start().done;
     await new Promise((r) => setTimeout(r, 10));
     expect(JSON.stringify(posted[0])).toContain('outside the user');
     expect(JSON.stringify(posted[0])).toContain('"deny"');
+  });
+
+  it('does not attribute an earlier pending draft to a no-op', async () => {
+    const { drafts, start } = setup([{ type: 'turn.done', id: 'd', state: { status: 'done' } }]);
+    drafts.stage({ path: 'a.py', search: 'return 1', replace: 'return 10', model: 'm' }, text);
+    expect((await start().done).pending).toBe(0);
+    expect(drafts.pending('a.py')).toHaveLength(1);
+  });
+
+  it('stops immediately during a retry backoff', async () => {
+    let attempts = 0;
+    const handle = withFallback({
+      chain: ['primary'],
+      start: () => {
+        attempts++;
+        return { done: Promise.resolve({ outcome: { status: 'error', message: '429 rate limited' }, pending: 0 }), cancel() {} };
+      },
+      onNotice: () => handle.cancel(),
+    });
+    expect((await handle.done).outcome.status).toBe('cancelled');
+    expect(attempts).toBe(1);
   });
 
   it('cancel before the session starts leaves nothing staged', async () => {

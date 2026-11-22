@@ -33,9 +33,17 @@ export interface FileChange {
   isNew: boolean;
 }
 
+export interface SidebarHistory {
+  mode: 'chat' | 'history' | 'inline';
+  chats: Array<{ sessionId: string; title: string; at: number }>;
+  inlineEdits: Array<{ id: string; path: string; startLine: number; endLine: number; instruction: string; status: string; detail?: string }>;
+}
+
 export interface ChatState {
+  sidebar?: SidebarHistory;
   changeSetId?: string;
   verification?: Verification;
+  inlineSelection?: { file: string; start: number; end: number };
   contextFiles?: string[];
   contextExcluded?: string[];
   checkpointAvailable?: boolean;
@@ -45,6 +53,7 @@ export interface ChatState {
   startedAt?: number;
   model: string;
   /** Totals of the last finished turn. */
+  usage?: { input: number; output: number; turns: number };
   lastTurn?: { tokens: number; ms: number };
   /** What the running turn is waiting on (a retry, a model switch); shown in the working bar only. */
   activity?: string;
@@ -68,9 +77,17 @@ export type ToWebview = { type: 'state'; state: ChatState };
 export type FromWebview =
   | { type: 'ready' }
   | { type: 'send'; text: string }
+  | { type: 'inlineInstruction'; text: string }
+  | { type: 'cancelInlineInstruction' }
   | { type: 'stop' }
   | { type: 'newChat' }
   | { type: 'history' }
+  | { type: 'sidebarBack' }
+  | { type: 'inlineHistory' }
+  | { type: 'deleteInlineHistory'; id: string }
+  | { type: 'resumeChat'; sessionId: string }
+  | { type: 'deleteChat'; sessionId: string }
+  | { type: 'openSession'; inline?: boolean }
   | { type: 'openFile'; path: string; line?: number }
   | { type: 'reconnect' }
   | { type: 'settings' }
@@ -83,6 +100,7 @@ export type FromWebview =
   | { type: 'checkpoint' }
   | { type: 'restoreCheckpoint' }
   | { type: 'recoverChanges' }
+  | { type: 'answerQuestion'; id: string; text: string }
   | { type: 'approve'; id: string; allow: boolean }
   | { type: 'review'; path?: string }
   | { type: 'keepAll' }

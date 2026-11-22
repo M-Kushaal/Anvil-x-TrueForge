@@ -5,10 +5,33 @@
       "label": "build",
       "type": "process",
       "command": "node",
-      "args": ["${workspaceFolder}/scripts/build.mjs"],
-      "group": { "kind": "build", "isDefault": true },
+      "args": [
+        "${workspaceFolder}/scripts/build.mjs"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
       "problemMatcher": [],
-      "presentation": { "reveal": "silent" }
+      "presentation": {
+        "reveal": "silent"
+      }
+    },
+    {
+      "label": "prepare debug",
+      "dependsOn": [
+        "build"
+      ],
+      "dependsOrder": "sequence",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/scripts/prepare-debug.mjs"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent"
+      }
     }
   ]
 }

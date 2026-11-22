@@ -1,186 +1,137 @@
-<p align="center">
-  <img src="docs/assets/anvil-hero.svg" alt="Anvil: see the context, review the change. A coding agent for VS Code, built on TrueForge." width="1200">
-</p>
-
-<h1 align="center">Anvil</h1>
-
-<p align="center">
-  <strong>A coding agent that shows its work and puts you in charge of every edit.</strong><br>
-  Built for VS Code. Powered by TrueForge. Reviewed by you.
-</p>
-
-<p align="center">
-  <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
-  <a href="#a-look-inside">Preview</a> &nbsp;·&nbsp;
-  <a href="#how-it-works">How it works</a> &nbsp;·&nbsp;
-  <a href="docs/development.md">Development</a> &nbsp;·&nbsp;
-  <a href="docs/writeup.md">Forge-a-thon write-up</a>
-</p>
+<div align="center">
+  <a href="#see-anvil-in-action">
+    <img src="docs/assets/anvil-hero.svg" width="1200" alt="Anvil: see the context, review the change. Built on TrueForge.">
+  </a>
+  <h1>Anvil</h1>
+  <p><strong>A VS Code coding agent that shows why it chose each file and lets you decide which edits to keep.</strong></p>
+  <p>
+    <a href="https://drive.google.com/file/d/1HM96QAkTnalrMM1jFUjyX8wES2yMvt6L/view?usp=sharing"><strong>Watch demo (3:53)</strong></a> &nbsp;?&nbsp;
+    <a href="#quick-start"><strong>Quick start</strong></a> &nbsp;·&nbsp;
+    <a href="#see-anvil-in-action">Preview</a> &nbsp;·&nbsp;
+    <a href="#try-the-flask-demo">Flask demo</a> &nbsp;·&nbsp;
+    <a href="docs/writeup.pdf">Write-up PDF</a>
+  </p>
+  <p>TrueFoundry Forge-a-thon · Techfest IIT Bombay 2026–27</p>
+</div>
 
 ---
 
-Ask for a small inline edit or a change across your project. Anvil finds relevant code,
-explains the context it sends to the model, and stages a proposal. **Your files change
-only when you keep the edits.**
-
-Built from scratch for the **TrueFoundry Forge-a-thon · Techfest IIT Bombay 2026–27**
-by **Matam Kushaal** and **Manit Jhanjharia**.
-
-## A look inside
+## See Anvil in action
 
 <table>
   <tr>
-    <td width="50%" align="center"><strong>Understand the context</strong></td>
-    <td width="50%" align="center"><strong>Review the proposal</strong></td>
+    <th width="50%" align="left">See what the agent reads</th>
+    <th width="50%" align="left">Choose what reaches the workspace</th>
   </tr>
   <tr>
-    <td valign="top"><img src="docs/assets/anvil-light.png" alt="Anvil in a light theme, showing implementation, test, and documentation files with selection reasons and a context token budget." width="520"></td>
-    <td valign="top"><img src="docs/assets/anvil-dark.png" alt="Anvil in a dark theme, showing tool activity and pending changes with Review, Keep all, and Reject all controls." width="520"></td>
+    <td valign="top">
+      <a href="docs/assets/anvil-light.png"><img src="docs/assets/anvil-light.png" width="480" alt="Anvil context card showing selected implementation, test, and documentation files with reasons and token estimates."></a>
+    </td>
+    <td valign="top">
+      <a href="docs/assets/anvil-dark.png"><img src="docs/assets/anvil-dark.png" width="480" alt="Anvil chat showing streamed tool activity and a pending patch with Review, Keep all, and Reject all controls."></a>
+    </td>
   </tr>
   <tr>
-    <td>See which files were selected, why they matter, and how much context they use.</td>
-    <td>Follow the work, inspect each diff, and decide which changes reach your files.</td>
+    <td valign="top">Open the Context card to see which files were sent, why they ranked, and how much of the budget they used.</td>
+    <td valign="top">Open the native VS Code diff and keep or reject individual hunks. Proposals stay pending until you act.</td>
   </tr>
 </table>
 
-<sub>UI previews rendered from Anvil's Preact components with example data. Light and dark themes follow VS Code.</sub>
+<sub>Previews use Anvil’s UI components with example data. Click either image to inspect it at full size.</sub>
 
-## Built around your workflow
+**Inline edit** works on a selection. Highlight code, press **Ctrl+I**, and type in the sidebar. A chip shows the selected filename and lines.
 
-| Capability | What you get |
-| --- | --- |
-| **Inline edits** | Select code, press `Ctrl+I`, and describe the change. The proposal stays within the selection, with a two-line allowance. |
-| **Agent mode** | Ask for a task spanning code, tests, and docs. Follow the plan, tool calls, and streamed response in one panel. |
-| **Visible context** | Relevant implementation, test, and documentation files, with reasons and a token budget. Pin files or mention `@file` and `@symbol`. |
-| **Review before writing** | Keep or reject individual changes in VS Code's diff editor. Run or skip each proposed command. |
-| **Recovery** | Reopen chats and recover saved pending proposals. Save and restore checkpoints of proposals before keeping them. |
-| **Model fallback** | Retry short interruptions and move through your configured model chain when a provider fails. |
+**Agent mode** works across files. Ask in the sidebar, follow the plan and tool activity, and click **Stop** to interrupt a turn. You can reopen or delete chats in sidebar History. `/model` switches the current conversation, `/usage` shows reported token totals, and `/rewind` reverses the latest kept edit request after confirmation.
 
 ## Quick start
 
-**You need:** Node.js **22.18+**, VS Code **1.100+**, and Git.
+**Requirements** · Node.js **22.18+**, VS Code **1.100+**, Git, and access to a model provider or local Ollama.
+
+### 1. Clone and build
 
 ```sh
 git clone https://github.com/M-Kushaal/Anvil-x-TrueForge.git anvil
 cd anvil
 npm ci
-cp .env.example .env
 npm run build
 ```
 
-Add your `GROQ_API_KEY` to `.env`. An optional `GROQ_SECOND_KEY` enables the second
-Groq provider; the example file lists the other supported keys. Keep `.env` local.
+Copy [`.env.example`](.env.example) to `.env` and add your `CEREBRAS_API_KEY` for the default Cerebras setup. Groq and Anthropic keys are also supported. Use `cp .env.example .env` in Bash or `Copy-Item .env.example .env` in PowerShell. Keep your keys in the local `.env` file or in TrueForge.
 
-Start the backend and relays in **terminal 1**:
+### 2. Start TrueForge
+
+In **terminal 1**, from the Anvil folder, leave this process running.
 
 ```sh
 npm run forge
 ```
 
-Once TrueForge is listening, register the models and agent in **terminal 2**, from
-the same `anvil` folder:
+It starts TrueForge **0.185.0** at `http://localhost:8790` and the local model relays. Match `anvil.serverUrl` to your server if you use a different address.
+
+### 3. Register the agent and open VS Code
+
+Once TrueForge is listening, run these in **terminal 2**, from the same Anvil folder.
 
 ```sh
 npm run setup
-code --extensionDevelopmentPath=. /path/to/your/project
+code --extensionDevelopmentPath=. "/path/to/your/project"
 ```
 
-Replace `/path/to/your/project` with your workspace. Open **Anvil** in the VS Code
-activity bar and send a request. Select code and press **Ctrl+I** for an inline edit.
+`npm run setup` registers the available providers and loads [the Anvil agent definition](agents/anvil.json). Replace the example project path with your workspace. In the Extension Development Host, select **Anvil** in the activity bar.
 
 <details>
-<summary><strong>Try the Flask demo with F5</strong></summary>
+<summary><strong>Model selection, Ollama, and Graphify</strong></summary>
 
-From the Anvil folder, clone the pinned demo workspace:
+- Copy the relevant entries from [example model settings](docs/examples/settings.json) to your workspace’s `.vscode/settings.json`. Use the model names printed by `npm run setup` and order them in `anvil.models`. Anvil selects the first registered model when fallback is enabled. Set `anvil.allowModelFallback` to `false` to use only the first configured model.
+- For an API-key-free setup, start Ollama, run `ollama pull qwen2.5:3b`, and run `npm run setup`. Choose the registered Ollama model in `anvil.models`.
+- For code-graph context, install Graphify with `pip install graphifyy`. Without it, Anvil retrieves context using lexical matching and code patterns.
+
+</details>
+
+## Try the Flask demo
+
+Clone the competition’s Flask checkout alongside Anvil, then open the **Anvil repository** in VS Code and press **F5**. Select **Run Anvil on fresh Flask** and press **F5**. The launch task uses the sibling repository to create a fresh checkout at `22d92470` under `.cache/debug/`, then opens it in an Extension Development Host. Each launch starts a new test workspace. Complete the TrueForge setup above first.
 
 ```sh
 git clone --depth 1 --branch 3.1.3 https://github.com/pallets/flask ../flask
 ```
 
-Open the Anvil folder in VS Code and press **F5**. The included launch configuration
-opens Flask in an Extension Development Host. Try:
+| Fixed task | What to look for |
+| --- | --- |
+| **A · Inline edit** | Review a change to Flask’s debug flag, then verify that `FLASK_DEBUG=off` returns `False`. |
+| **B · Agent mode** | Ask for a `flask config` command without naming files. Watch Anvil find the implementation, test, and docs, then verify the tests and masked JSON. |
+| **C · Resilience** | Repeat the inline request with a deliberately failing provider. Show the error or fallback and verify that the workspace stays clean. |
 
-> Add a CLI command that prints the app configuration. Mask sensitive values, and include tests and documentation.
-
-For the exact competition prompts and recording steps, see the [Round 1 demo checklist](docs/demo.md).
-
-To run the Flask evaluation or live tests, see the [development guide](docs/development.md#optional-integration-tests).
-
-</details>
-
-<details>
-<summary><strong>Optional: code graphs, local models, and settings</strong></summary>
-
-- Install Graphify with `pip install graphifyy` for code-graph signals. Anvil can retrieve context using keywords when Graphify is unavailable.
-- Install Ollama and run `ollama pull qwen2.5:3b` for a local fallback. Start Ollama before `npm run setup`.
-- Add providers in TrueForge and configure the chain in `anvil.models`. The first model is primary. Set `anvil.allowModelFallback` to `false` to stay on that model.
-- Copy the values you need from [the example settings](docs/examples/settings.json) into your workspace settings.
-
-TrueForge is pinned to **0.185.0**, matching the SDK version Anvil was developed
-against. The backend listens on `localhost:8790`; relays use ports `8791` and `8792`.
-
-</details>
+[Exact prompts, recording sequence, and verification commands](docs/video_plan.md) · [Forge-a-thon write-up](docs/writeup.pdf)
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    A[Your request in VS Code] --> B[Anvil: context and pending edits]
-    B -->|Sessions and streamed turns| C[TrueForge: agent loop]
-    C --> D[Configured model providers]
-    C -->|MCP tool calls| E[Read, search, propose, run]
-    E -->|Edit or command| F[Your review and approval]
-    F -->|Keep an edit| G[Workspace files]
+    A["VS Code<br/>Request and context"] -->|Streamed session| B["TrueForge<br/>Agent loop"]
+    B <-->|Model requests| C["Model providers"]
+    B <-->|MCP tool calls| D["Anvil<br/>Read, search, stage, verify"]
+    D --> E["Native VS Code diff"]
+    E -->|User keeps a hunk| F["Workspace files"]
 ```
 
-**TrueForge runs the agent loop.** Anvil supplies editor capabilities as MCP tools,
-assembles context, and turns streamed events into a reviewable workflow. The extension
-uses the TrueForge SDK; provider requests go through the backend.
+TrueForge owns the agent loop. The extension uses the TrueForge SDK for streamed sessions and exposes editor tools over an authenticated loopback MCP connector. Anvil builds the initial context pack from keyword matches, code patterns and optional graph links. The agent can fetch more through tools.
 
-**Context has a budget.** Keyword matching, existing code patterns, and optional code
-graphs help select relevant implementation, tests, and docs. The agent can read more
-through tools when needed.
-
-**Proposals stay pending.** Keep or reject changes hunk by hunk. Commands need approval
-and run on a temporary workspace copy with staged edits applied. They retain your host
-permissions; this execution mode is not a sandbox.
-
-Read the [architecture guide](docs/architecture.md) for context scoring, tool approvals,
-model settings, recovery behavior, and current limitations.
+Edits stay in a draft layer until Keep. Commands require explicit approval and run on a temporary workspace copy that includes staged edits, with the user’s host permissions. See [architecture and limitations](docs/architecture.md).
 
 ## Develop and verify
 
-```sh
-npm run check       # Typechecks + unit and component tests
-npm run build       # Development bundles
-npm run package     # Production bundles
-npm run test:e2e    # Review flow inside a real VS Code instance
-```
+| Command | Coverage |
+| --- | --- |
+| `npm run check` | Typechecking, unit tests, and webview tests |
+| `npm run test:e2e` | Review flow inside VS Code |
+| `npm run eval` | Retrieval regression on Flask 3.1.3 |
+| `npm run test:live` | Live TrueForge sessions and model providers |
 
-`npm run eval` checks retrieval against the Flask demo; `npm run test:live` exercises
-real TrueForge sessions and model providers. These optional suites have additional
-requirements described in the [development guide](docs/development.md).
+The retrieval regression covers **18 expected targets across 8 Flask tasks**, which also informed the retrieval heuristics. See the [development guide](docs/development.md) for fixtures and test prerequisites.
 
-The retrieval regression covers **18 expected file targets across 8 Flask tasks**.
-These tasks helped tune retrieval, so the results are a regression check rather than
-a general coding-agent benchmark.
+## Team and license
 
-## A few practical boundaries
+**Matam Kushaal** ([GitHub](https://github.com/M-Kushaal)) and **Manit Jhanjharia** ([GitHub](https://github.com/Osama-Bin-Lagging)), IIT Bombay.
 
-Provider quotas can interrupt longer runs. Local fallback quality and speed depend
-on the model and hardware. Retrieval starts with one file per role; broader changes
-rely on the agent reading more. Proposal checkpoints restore pending edits, not files
-already kept. See [the full limitations](docs/architecture.md#limitations).
-
-## Team and credits
-
-**Matam Kushaal** · [@M-Kushaal](https://github.com/M-Kushaal)<br>
-**Manit Jhanjharia**
-
-Built from scratch; third-party projects are used as libraries and external tools.
-Anvil uses **TrueForge SDK**, **Model Context Protocol SDK**, **Preact**, **Graphify**,
-**marked**, **DOMPurify**, **jsdiff**, **zod**, and **Codicons**.
-See [the submission write-up](docs/writeup.md) for the architecture, model setup,
-and Forge-a-thon scorecard.
-
-**MIT licensed** · [LICENSE](LICENSE)
+**Starting point** · From scratch. TrueForge and the other dependencies are used as libraries and tools. Flask is the demo workspace. Anvil is released under the [MIT license](LICENSE).

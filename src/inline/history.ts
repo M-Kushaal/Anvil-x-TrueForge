@@ -31,6 +31,12 @@ const MAX_TURNS = 6;
 const LIMIT = 200;
 
 export class InlineHistory {
+  private readonly listeners = new Set<() => void>();
+  onChange(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+  private changed(): void { for (const listener of this.listeners) listener(); }
   constructor(private readonly store: Store) {}
 
   entries(): InlineEntry[] {
@@ -61,10 +67,17 @@ export class InlineHistory {
 
   async add(entry: InlineEntry): Promise<void> {
     await this.store.update(ENTRIES, [entry, ...this.entries()].slice(0, LIMIT));
+    this.changed();
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.store.update(ENTRIES, this.entries().filter((entry) => entry.id !== id));
+    this.changed();
   }
 
   async finish(id: string, status: InlineStatus, detail?: string): Promise<void> {
     await this.store.update(ENTRIES, this.entries().map((e) => (e.id === id ? { ...e, status, ...(detail ? { detail } : {}) } : e)));
+    this.changed();
   }
 }
 

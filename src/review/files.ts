@@ -48,9 +48,15 @@ export async function writeReal(ws: Workspace, path: string, text: string, expec
   }
 }
 
-export async function deleteReal(ws: Workspace, path: string): Promise<void> {
+export async function deleteReal(ws: Workspace, path: string, expected: string): Promise<void> {
+  const uri = vscode.Uri.file(ws.resolve(path));
+  const contents = await vscode.workspace.fs.readFile(uri);
+  const open = vscode.workspace.textDocuments.find((doc) => doc.uri.fsPath === uri.fsPath);
+  if (open?.isDirty || !Buffer.from(contents).equals(Buffer.from(expected, 'utf8'))) {
+    throw new Error(`${path} changed while preparing to revert it.`);
+  }
   const edit = new vscode.WorkspaceEdit();
-  edit.deleteFile(vscode.Uri.file(ws.resolve(path)), { ignoreIfNotExists: true });
+  edit.deleteFile(uri, { ignoreIfNotExists: false });
   if (!await vscode.workspace.applyEdit(edit)) throw new Error(`Could not remove ${path}`);
   ws.invalidate();
 }

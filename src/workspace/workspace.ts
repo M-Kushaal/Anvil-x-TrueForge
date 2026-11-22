@@ -23,6 +23,11 @@ export function withoutSecrets(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([key]) => !/(?:^|_)(?:API_KEY|ACCESS_KEY|PRIVATE_KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?)(?:_|$)/i.test(key) && !/(?:KEY|TOKEN|SECRET|PASSWORD)$/i.test(key)));
 }
 
+/** Files eligible for a verification copy, regardless of whether they can be indexed. */
+export function isCommandSnapshotPath(p: string): boolean {
+  return !isSecretPath(p) && !p.split(/[\\/]/).some((part) => IGNORED_DIRS.has(part));
+}
+
 /** Shared discovery and watcher policy; explicit file reads may still access hidden project files. */
 export function isIndexablePath(p: string): boolean {
   const parts = p.replace(/\\/g, '/').replace(/^\.\//, '').split('/');

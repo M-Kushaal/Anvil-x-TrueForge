@@ -6,6 +6,8 @@ import { startInlineEdit, type InlineDeps, type InlineHandle, type InlineResult 
 
 export interface InlineUiDeps extends InlineDeps {
   review: ReviewService;
+  onFinished?: (path: string, pending: number) => void;
+  askInstruction: (selection: { file: string; start: number; end: number }) => Promise<string | undefined>;
   models: () => string[];
   relPath: (abs: string) => string | undefined;
   /** Wraps the run with retry and model fallback (see withFallback). */
@@ -20,12 +22,9 @@ export function registerInlineEdit(deps: InlineUiDeps): vscode.Disposable {
     borderColor: new vscode.ThemeColor('anvil.accent'),
     backgroundColor: new vscode.ThemeColor('anvil.workingBackground'),
   });
-  const hint = vscode.window.createTextEditorDecorationType({
-    after: { margin: '0 0 0 2em', color: new vscode.ThemeColor('descriptionForeground'), fontStyle: 'normal' },
-  });
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 49);
   let active: InlineHandle | undefined;
-  let lastInstruction = '';
+  let selectionRequest = 0;
 
   const setRunning = (running: boolean) => void vscode.commands.executeCommand('setContext', 'anvil.inlineRunning', running);
 
@@ -33,25 +32,35 @@ export function registerInlineEdit(deps: InlineUiDeps): vscode.Disposable {
     const editor = vscode.window.activeTextEditor;
     if (!editor || active) return;
     const doc = editor.document;
-    const path = deps.relPath(doc.uri.fsPath);
-    if (!path) return void vscode.window.showWarningMessage('Anvil: inline edit works on files inside the open folder.');
+    let path: string | undefined;
+    if (doc.uri.scheme === 'anvil-proposal') {
+      if (doc.uri.query === 'empty') {
+        return void vscode.window.showInformationMessage('Select code on the proposal side of the diff to edit it.');
+      }
+      const relative = doc.uri.path.replace(/^\//, '');
+      path = deps.edits.normalize ? deps.edits.normalize(relative) : relative;
+    } else if (doc.uri.scheme === 'file') {
+      path = deps.relPath(doc.uri.fsPath);
+    }
+    if (!path) return void vscode.window.showWarningMessage(
+      'Open a source file from this window?s Explorer before using Anvil inline edit. A file from a previous debug workspace belongs to a different folder.');
 
     const { start, end } = selectedLines(editor);
+    const version = doc.version;
     const name = path.split('/').pop();
-    const instruction = await vscode.window.showInputBox({
-      title: `Anvil · Edit ${name} L${start}–${end}`,
-      placeHolder: 'Describe the change',
-      value: lastInstruction,
-      valueSelection: [0, lastInstruction.length],
-      ignoreFocusOut: true,
-    });
-    if (!instruction?.trim()) return;
-    lastInstruction = instruction;
+    const requestId = ++selectionRequest;
+    const instruction = await deps.askInstruction({ file: name ?? path, start, end });
+    if (requestId !== selectionRequest || active) return;
+    if (!instruction?.trim()) { deps.onFinished?.(path, 0); return; }
+    if (doc.isClosed || doc.version !== version) {
+      deps.onFinished?.(path, 0);
+      return void vscode.window.showWarningMessage('Anvil: the document changed. Select the code again before editing.');
+    }
+    await vscode.window.showTextDocument(doc, { viewColumn: editor.viewColumn, preserveFocus: false });
+    if (requestId !== selectionRequest || active) return;
 
     const range = new vscode.Range(start - 1, 0, end - 1, doc.lineAt(end - 1).text.length);
     editor.setDecorations(working, [range]);
-    const showHint = (text: string) => editor.setDecorations(hint, [{ range: new vscode.Range(start - 1, 0, start - 1, 0), renderOptions: { after: { contentText: text } } }]);
-    showHint('Anvil is editing… Esc to stop');
     status.text = `$(sync~spin) Anvil · editing ${name}`;
     status.tooltip = 'Esc or Ctrl+Shift+Backspace to stop';
     status.show();
@@ -67,7 +76,7 @@ export function registerInlineEdit(deps: InlineUiDeps): vscode.Disposable {
     };
     const onEvent = (event: ForgeEvent) => {
       const size = streamedArgs(event);
-      if (size) showHint('Anvil is writing the change… Esc to stop');
+      if (size) status.text = `$(sync~spin) Anvil writing ${name}`;
     };
     const startOn = (model: string) => startInlineEdit({ deps, request, model, onEvent });
     active = deps.run ? deps.run(startOn) : startOn(deps.models()[0] ?? '');
@@ -78,16 +87,15 @@ export function registerInlineEdit(deps: InlineUiDeps): vscode.Disposable {
     } finally {
       active = undefined;
       editor.setDecorations(working, []);
-      editor.setDecorations(hint, []);
       status.hide();
       setRunning(false);
     }
     report(result, path, deps.review);
+    deps.onFinished?.(path, result.pending);
   };
 
   return vscode.Disposable.from(
     working,
-    hint,
     status,
     { dispose: () => active?.cancel() },
     vscode.commands.registerCommand('anvil.inlineEdit', run),

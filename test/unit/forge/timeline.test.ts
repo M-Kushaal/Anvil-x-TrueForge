@@ -89,6 +89,12 @@ describe('describeCall', () => {
 });
 
 describe('firstLine', () => {
+  it('shows the readable message inside nested approval error envelopes', () => {
+    const message = 'User denied tool call: The user skipped this command.';
+    const envelope = JSON.stringify({ error: { type: 'text', text: JSON.stringify({ error: message }) } });
+    expect(firstLine(envelope)).toBe(`Error: ${message}`);
+    expect(firstLine(JSON.stringify([{ type: 'text', text: envelope }]))).toBe(`Error: ${message}`);
+  });
   it('reads MCP content arrays and JSON-encoded content', () => {
     expect(firstLine([{ type: 'text', text: '\nsummary\nmore' }])).toBe('summary');
     expect(firstLine(JSON.stringify([{ type: 'text', text: 'hello\nworld' }]))).toBe('hello');

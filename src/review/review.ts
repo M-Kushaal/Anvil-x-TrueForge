@@ -15,6 +15,8 @@ interface HunkNode {
 }
 
 interface Applied {
+  baseBefore: string;
+  baseAfter: string;
   path: string;
   before: string | undefined; // undefined = the file did not exist
   after: string;
@@ -29,6 +31,65 @@ export class ReviewService implements vscode.TextDocumentContentProvider, vscode
   /** Kept changes, newest last, for Revert Last Kept Change. */
   private readonly appliedSets = new Map<string, Applied[]>();
   private activeSet = 'default';
+  private operation = 0;
+  private readonly rewindOperations: Array<{ id: number; files: Applied[] }> = [];
+
+  beginOperation(): void { this.operation++; }
+
+  private recordOperation(change: Applied): void {
+    let operation = this.rewindOperations.at(-1);
+    if (!operation || operation.id !== this.operation) {
+      operation = { id: this.operation, files: [] };
+      this.rewindOperations.push(operation);
+    }
+    const previous = operation.files.find((file) => file.path === change.path);
+    if (previous) { previous.after = change.after; previous.baseAfter = change.baseAfter; }
+    else operation.files.push({ ...change });
+  }
+
+  async rewindLastOperation(): Promise<void> {
+    if (this.drafts.isLocked()) return this.notify('Wait for the current file operation to finish.');
+    const operation = this.rewindOperations.at(-1);
+    if (!operation) return this.notify('No edit operation is available to rewind in this extension session.');
+    if (operation.files.some((file) => this.drafts.get(file.path))) {
+      return this.notify('Keep or reject pending proposals in the affected files before rewinding.');
+    }
+    const releases = operation.files.map((file) => this.drafts.lock(file.path));
+    let reverted = 0;
+    try {
+      for (const file of operation.files) {
+        if (await readReal(this.ws, file.path) !== file.after) {
+          return this.notify(`${file.path} changed after Keep. Rewind stopped before writing any files.`);
+        }
+      }
+      for (const file of [...operation.files].reverse()) {
+        if (file.before === undefined) await deleteReal(this.ws, file.path, file.after);
+        else {
+          const result = await writeReal(this.ws, file.path, file.before, { text: file.after });
+          if (!result.saved) {
+            file.after = file.before;
+            throw new Error(`${file.path} was restored in the editor but could not be saved. Save it, then retry Rewind.`);
+          }
+        }
+        operation.files.pop();
+        reverted++;
+        // Earlier single-Keep undo records for this operation no longer describe the real file.
+        for (const ledger of this.appliedSets.values()) {
+          for (let i = ledger.length - 1; i >= 0; i--) {
+            const entry = ledger[i]!;
+            if (entry.path === file.path && entry.after === file.after) ledger.splice(i, 1);
+          }
+        }
+      }
+      this.rewindOperations.pop();
+      this.notify(`Rewound the last edit operation across ${reverted} file(s). Earlier operations can be rewound again.`);
+    } catch (error) {
+      this.notify(`Rewind stopped after restoring ${reverted} file(s): ${String(error)}`);
+    } finally {
+      for (const release of releases) release();
+    }
+  }
+
   private get applied(): Applied[] {
     let entries = this.appliedSets.get(this.activeSet);
     if (!entries) { entries = []; this.appliedSets.set(this.activeSet, entries); }
@@ -145,7 +206,8 @@ export class ReviewService implements vscode.TextDocumentContentProvider, vscode
       this.notify(`Could not finish writing ${path}: ${String(error)}. Check the file; its proposal remains pending.`);
       return false;
     }
-    this.applied.push({ path, before, after: plan.text, model });
+    this.applied.push({ path, before, after: plan.text, model, baseBefore: plan.baseBefore, baseAfter: plan.baseAfter });
+    this.recordOperation({ path, before, after: plan.text, model, baseBefore: plan.baseBefore, baseAfter: plan.baseAfter });
     plan.commit();
     if (!saved) this.notify(`Kept ${path} in the editor. It has unsaved changes; save the file manually.`);
     return true;
@@ -202,13 +264,18 @@ export class ReviewService implements vscode.TextDocumentContentProvider, vscode
         ledger.push(last);
         return this.notify(`${last.path} has changed since that change was kept. Use Ctrl+Z in the file instead.`);
       }
+      const pending = this.drafts.get(last.path);
+      if (pending && pending.base !== last.baseAfter) {
+        ledger.push(last);
+        return this.notify(`Pending changes for ${last.path} use a different base. Resolve them before reverting the kept change.`);
+      }
       let saved = true;
-      if (last.before === undefined) await deleteReal(this.ws, last.path);
+      if (last.before === undefined) await deleteReal(this.ws, last.path, last.after);
       else ({ saved } = await writeReal(this.ws, last.path, last.before, { text: last.after }));
       // Release only after all I/O. Reopening below is synchronous and deliberately mutates the
       // proposal; other stage/reject/task-switch operations were blocked throughout the write.
       release();
-      this.drafts.reopen({ path: last.path, before: last.before ?? '', after: last.after, model: last.model, isNew: last.before === undefined });
+      this.drafts.reopen({ path: last.path, before: last.baseBefore, after: last.baseAfter, model: last.model, isNew: last.before === undefined });
       this.notify(`Reverted the last kept change in ${last.path}. It is pending again.${saved ? '' : ' The file has unsaved changes; save it manually.'}`);
     } catch (error) {
       ledger.push(last);
@@ -238,7 +305,10 @@ export class ReviewService implements vscode.TextDocumentContentProvider, vscode
 
   private activePath(): string | undefined {
     const uri = vscode.window.activeTextEditor?.document.uri;
-    return uri?.scheme === SCHEME ? proposalPath(uri) : undefined;
+    if (uri?.scheme === SCHEME) return proposalPath(uri);
+    const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+    return input instanceof vscode.TabInputTextDiff && input.modified.scheme === SCHEME
+      ? proposalPath(input.modified) : undefined;
   }
 
   private hunkAtCursor(): { path: string; hunk: Hunk } | undefined {
@@ -280,8 +350,10 @@ function proposalPath(uri: vscode.Uri): string {
   return uri.path.replace(/^\//, '');
 }
 
-function pathOf(target: string | { path?: string } | undefined): string | undefined {
-  return typeof target === 'string' ? target : target?.path;
+function pathOf(target: string | { path?: string; scheme?: string } | undefined): string | undefined {
+  if (typeof target === 'string') return target;
+  if (target?.scheme === SCHEME && target.path) return target.path.replace(/^\//, '');
+  return target?.scheme ? undefined : target?.path;
 }
 
 function basename(path: string): string {

@@ -10,7 +10,7 @@ export interface ForgeEvent {
   toolCalls?: unknown;
   toolCallId?: string;
   title?: string;
-  state?: { status?: string; message?: string; reason?: string; metrics?: { totalTokens?: number } };
+  state?: { status?: string; message?: string; reason?: string; metrics?: { totalTokens?: number; totalInputTokens?: number; totalOutputTokens?: number } };
 }
 
 interface ToolCall {
@@ -41,6 +41,7 @@ export function applyEvent(state: ChatState, event: ForgeEvent): ChatState {
           return { ...row, status: summary.startsWith('Error') || failedCommand ? 'error' : 'done', summary, output };
         }),
       };
+    case 'tool.response_required':
     case 'tool.approval_required':
       return {
         ...state,
@@ -128,12 +129,22 @@ function responseText(content: unknown): string {
 }
 
 /** MCP results sometimes arrive as a JSON-encoded content array. */
-function unwrapJsonText(text: string): string {
-  if (!text.startsWith('[') && !text.startsWith('{')) return text;
+function unwrapJsonText(text: string, depth = 0): string {
+  if (depth >= 8) return text;
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) return text;
   try {
-    const value: unknown = JSON.parse(text);
+    const value: unknown = JSON.parse(trimmed);
+    if (value && typeof value === 'object' && !Array.isArray(value) && 'error' in value) {
+      const error = value.error;
+      if (typeof error === 'string') return `Error: ${error}`;
+      if (error && typeof error === 'object') {
+        if ('message' in error && typeof error.message === 'string') return `Error: ${error.message}`;
+        if ('text' in error && typeof error.text === 'string') return unwrapJsonText(error.text, depth + 1);
+      }
+    }
     const parts = Array.isArray(value) ? value : (value as { content?: unknown }).content;
-    if (Array.isArray(parts)) return parts.map((p) => (p && typeof p === 'object' && 'text' in p ? String(p.text) : '')).join('\n');
+    if (Array.isArray(parts)) return parts.map((p) => (p && typeof p === 'object' && 'text' in p ? unwrapJsonText(String(p.text), depth + 1) : '')).join('\n');
   } catch {
     // not JSON after all
   }

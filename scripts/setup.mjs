@@ -6,6 +6,7 @@
 // a key already stored in TrueForge is kept as is.
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { parseEnv } from 'node:util';
 import { TrueForge } from '@truefoundry/trueforge-sdk';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -59,7 +60,7 @@ if (cerebrasKey) {
 const anthropicKey = process.env.ANTHROPIC_API_KEY || keyOf('anthropic');
 if (anthropicKey) {
   await client.settings.modelProviders.createOrUpdate({ manifest: {
-    type: 'anthropic', name: 'anthropic', auth: { apiKey: anthropicKey },
+    type: 'anthropic', auth: { apiKey: anthropicKey },
     models: [{ modelId: 'claude-haiku-5-5', name: 'claude-haiku-5-5', properties: { contextLength: 200000, maxOutputTokens: 8192 } }],
   } });
   console.log('✓ anthropic: claude-haiku-5-5');
@@ -73,9 +74,11 @@ const ollama = await fetch('http://127.0.0.1:11434/api/tags').then((r) => r.json
 const installed = ollama?.models?.map((m) => m.name) ?? [];
 const local = ['qwen2.5:3b', 'qwen2.5:7b', 'llama3.2:3b', 'qwen2.5', 'llama3.2'].map((p) => installed.find((n) => n.startsWith(p))).find(Boolean) ?? installed[0];
 if (local) {
+  const slug = local.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+  const name = slug === 'qwen2-5-3b' ? slug : 'local';
   await client.settings.modelProviders.createOrUpdate({ manifest: {
     type: 'custom', name: 'ollama', baseUrl: 'http://127.0.0.1:11434/v1', auth: { apiKey: 'ollama' },
-    models: [{ modelId: local, name: local.toLowerCase().replace(/[^a-z0-9-]+/g, '-'), properties: { contextLength: 32768, maxOutputTokens: 4096 } }],
+    models: [{ modelId: local, name, properties: { contextLength: 32768, maxOutputTokens: 4096 } }],
   } });
   console.log(`✓ ollama: ${local}`);
 } else {
@@ -99,8 +102,7 @@ console.log(`Models available: ${models.map((m) => m.name).join(', ')}`);
 
 function loadDotEnv(file) {
   if (!existsSync(file)) return;
-  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, '');
+  for (const [name, value] of Object.entries(parseEnv(readFileSync(file, 'utf8')))) {
+    if (!process.env[name]) process.env[name] = value;
   }
 }

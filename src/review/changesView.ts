@@ -33,7 +33,8 @@ export class ChangesView implements vscode.TreeDataProvider<Node> {
     }
     const { hunk } = node;
     const sample = (hunk.newLines.find((l) => l.trim()) ?? hunk.oldLines.find((l) => l.trim()) ?? '').trim();
-    const item = new vscode.TreeItem(sample.slice(0, 60) || '(blank lines)');
+    const emptyCreation = hunk.oldLines.length === 0 && hunk.newLines.length === 0;
+    const item = new vscode.TreeItem(emptyCreation ? 'Create empty file' : sample.slice(0, 60) || '(blank lines)');
     item.description = `L${hunk.newStart + 1} · +${hunk.newLines.length} −${hunk.oldLines.length}`;
     item.iconPath = new vscode.ThemeIcon(hunk.oldLines.length === 0 ? 'diff-added' : hunk.newLines.length === 0 ? 'diff-removed' : 'diff-modified');
     item.contextValue = 'anvilHunk';

@@ -1,5 +1,4 @@
-// Registers Anvil's MCP server with TrueForge as a connector (`anvil-editor`, or a per-workspace name
-// so two VS Code windows never route each other's tool calls).
+// Registers an extension host's MCP server with TrueForge.
 import type { TrueForge } from '@truefoundry/trueforge-sdk';
 import { CONNECTOR_NAME } from './client';
 import type { McpHost } from '../mcp/server';
@@ -14,7 +13,7 @@ export async function registerConnector(sdk: TrueForge, host: McpHost, name = CO
         description: 'Editor tools for the open VS Code workspace: read, search, outline, propose edits, run commands.',
         auth: { type: 'header', headers: { Authorization: `Bearer ${host.token}` } },
       },
-    });
+    }, { timeoutInSeconds: 10 });
   } catch (error) {
     throw new Error(explain(error, serverUrl), { cause: error });
   }
