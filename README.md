@@ -3,9 +3,9 @@
     <img src="docs/assets/anvil-hero.svg" width="1200" alt="Anvil: see the context, review the change. Built on TrueForge.">
   </a>
   <h1>Anvil</h1>
-  <p><strong>A VS Code coding agent that shows why it chose each file and lets you decide which edits to keep.</strong></p>
+  <p><strong>Turn ideas into code, with context you can see and changes you control.</strong></p>
   <p>
-    <a href="https://drive.google.com/file/d/1HM96QAkTnalrMM1jFUjyX8wES2yMvt6L/view?usp=sharing"><strong>Watch demo (3:53)</strong></a> &nbsp;?&nbsp;
+    <a href="https://drive.google.com/file/d/1HM96QAkTnalrMM1jFUjyX8wES2yMvt6L/view?usp=sharing"><strong>Watch demo (3:53)</strong></a> &nbsp;&middot;&nbsp;
     <a href="#quick-start"><strong>Quick start</strong></a> &nbsp;·&nbsp;
     <a href="#see-anvil-in-action">Preview</a> &nbsp;·&nbsp;
     <a href="#try-the-flask-demo">Flask demo</a> &nbsp;·&nbsp;
