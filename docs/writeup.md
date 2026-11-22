@@ -8,8 +8,8 @@ TrueFoundry Forge-a-thon · Techfest IIT Bombay 2026–27
 
 | Member | College | GitHub |
 |---|---|---|
-| Matam Kushaal | IIT Bombay | [@M-Kushaal](https://github.com/M-Kushaal) |
-| Manit Jhanjharia | IIT Bombay | [@Osama-Bin-Lagging](https://github.com/Osama-Bin-Lagging) |
+| Matam Kushaal | IIT Bombay | [Kushaal's GitHub](https://github.com/M-Kushaal) |
+| Manit Jhanjharia | IIT Bombay | [Manit's GitHub](https://github.com/Osama-Bin-Lagging) |
 
 ## 2. Starting point
 
