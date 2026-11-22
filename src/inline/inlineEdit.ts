@@ -43,7 +43,7 @@ export function registerInlineEdit(deps: InlineUiDeps): vscode.Disposable {
       path = deps.relPath(doc.uri.fsPath);
     }
     if (!path) return void vscode.window.showWarningMessage(
-      'Open a source file from this window?s Explorer before using Anvil inline edit. A file from a previous debug workspace belongs to a different folder.');
+      'Open a source file from the Explorer in this window before using Anvil inline edit. A file from a previous debug workspace belongs to a different folder.');
 
     const { start, end } = selectedLines(editor);
     const version = doc.version;

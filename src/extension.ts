@@ -333,7 +333,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<AnvilA
     );
     if (!picked || controller.snapshot.running || !canSwitch()) return;
     if (!available.includes(picked.label)) {
-      void vscode.window.showWarningMessage(`${picked.label} is configured but is not registered in TrueForge. Add the provider key to Anvil?s .env and run npm run setup.`);
+      void vscode.window.showWarningMessage(`${picked.label} is configured but is not registered in TrueForge. Add the provider key to the Anvil .env file and run npm run setup.`);
       return;
     }
     // Workspace settings take precedence over global settings.

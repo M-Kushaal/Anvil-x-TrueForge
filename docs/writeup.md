@@ -35,11 +35,11 @@ TrueForge shortens older conversation history through compaction. Standard sessi
 
 ## 4. How context is selected
 
-Anvil searches file paths, code symbols and text using BM25, a keyword-ranking method. When available, Graphify links help it find related code. It also looks for matching tests and documentation. Files and symbols named with `@file` or `@symbol` take priority.
+Anvil uses role-aware lexical retrieval augmented by an optional Graphify code graph. The context engine indexes file paths, symbol outlines and source text, refreshing invalidated files before retrieval. Field-specific BM25 scores are combined with implementation-pattern matches, explicitly named definitions and graph PageRank. Implementation ranking weights path matches by 2, symbol matches by 1, body matches by 0.5, and graph centrality by 0.3, with additional pattern and identifier bonuses. Test and documentation candidates are ranked relative to the leading implementation using graph links, filename conventions, symbol coverage and lexical overlap.
 
-The first context pack includes one file for each needed role, with outlines and line-numbered excerpts. Its default budget is about **3,000 tokens**, with a smaller budget for lean models. Anvil shortens excerpts before dropping optional material. The Context card shows which files were chosen, why they were chosen and their estimated token use. The agent can read more through MCP when needed.
+Explicit `@file` and `@symbol` mentions are packed first. Anvil selects one candidate per requested role and renders outlines plus line-numbered snippets within a default **3,000-token budget**, reduced for lean models. Token use is estimated at one token per four characters. Excerpt caps decrease from 45 to 30, 20, 12 and 6 lines before optional content and bodies are dropped. The Context card exposes selection reasons and estimated costs; MCP tools support additional reads.
 
-In eight local Flask checks with Graphify, Anvil's top-ranked results found the expected files in **8/8 implementation, 6/6 test and 4/4 documentation** cases. We used these same tasks to improve retrieval, so these results are development checks rather than an independent evaluation.
+Across eight local Flask retrieval checks with Graphify, recall@1 was **8/8 implementation, 6/6 test and 4/4 documentation** targets. These tasks also informed the heuristics.
 
 ## 5. Model setup
 
@@ -54,15 +54,15 @@ In eight local Flask checks with Graphify, Anvil's top-ranked results found the 
 
 ## 6. Scorecard
 
-[Demo video](<https://drive.google.com/file/d/1HM96QAkTnalrMM1jFUjyX8wES2yMvt6L/view?usp=sharing>) - **Runtime 3:53**, within the four-minute limit.
+[Demo video](<https://drive.google.com/file/d/1iafuSwR2Y0_JUqOaT2HSqPksJ2yYdD4Y/view?usp=sharing>) - **Runtime 3:59**, within the four-minute limit.
 
-Timestamps mark task starts supplied for the final video. Related judging criteria refer to the segment containing their demonstration. Task A starts at 0:00, Task B at 0:46, and Task C at 2:06.
+Timestamps mark task starts supplied for the final video. Related judging criteria refer to the segment containing their demonstration. Task A starts at 0:00, Task B at 0:46, Task C at 2:06, and the Stop demonstration at 3:45.
 
 | Judging criterion | Video timestamp | One-line claim |
 |---|---|---|
 | A1 - Inline edit | 0:00 | Task A stages the selected Flask edit for individual hunk review. |
 | A2 - Agent mode | 0:46 | Task B discovers the CLI implementation, tests and docs from an unattached prompt. |
-| A3 - Streaming and cancellation | 0:00; 2:06 | Model and tool activity streams in the sidebar, and Stop interrupts the turn. |
+| A3 - Streaming and cancellation | 3:45 | Model and tool activity streams in the sidebar, and Stop interrupts the turn. |
 | B1 - Context assembly | 0:46 | The Context card shows selected files, reasons and the estimated token budget. |
 | B2 - Diff safety | 0:00; 0:46 | Per-hunk Keep/Reject and confirmed operation-level rewind control file changes. |
 | B3 - Resilience | 2:06 | An unreachable selected provider produces a clear error while the workspace remains unchanged. |
